@@ -19,6 +19,7 @@ class Settings:
     )
     cli_programs: dict = field(default_factory=dict)
     file_root: Path = field(default_factory=lambda: Path("examples/fixtures").resolve())
+    database_root: Path | None = None
     max_concurrency: int = 4
     api_token: str = field(default_factory=lambda: os.getenv("OMNITEST_API_TOKEN", ""))
     plugins: bool = True
@@ -26,6 +27,7 @@ class Settings:
     def __post_init__(self):
         self.data_dir = Path(self.data_dir).resolve()
         self.file_root = Path(self.file_root).resolve()
+        self.database_root = Path(self.database_root or self.data_dir / "fixtures").resolve()
         self.data_dir.mkdir(parents=True, exist_ok=True)
         config = os.getenv("OMNITEST_CONFIG")
         if config:
@@ -33,6 +35,7 @@ class Settings:
             self.cli_programs = value.get("cli_programs", {})
             self.allowed_hosts.update(value.get("allowed_hosts", []))
             self.file_root = Path(value.get("file_root", self.file_root)).resolve()
+            self.database_root = Path(value.get("database_root", self.database_root)).resolve()
         tool = Path("examples/tool.py").resolve()
         if tool.is_file():
             self.cli_programs.setdefault(

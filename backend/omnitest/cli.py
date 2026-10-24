@@ -23,6 +23,10 @@ def main():
     serve.add_argument("--port", type=int, default=8000)
     demo = sub.add_parser("seed-demo")
     demo.add_argument("--base-url", default="http://127.0.0.1:8765")
+    phase2 = sub.add_parser("seed-phase2")
+    phase2.add_argument("--base-url", default="http://127.0.0.1:8765")
+    phase2.add_argument("--tcp-host", default="127.0.0.1")
+    phase2.add_argument("--tcp-port", type=int, default=8766)
     run = sub.add_parser("run")
     run.add_argument("--project", required=True)
     choice = run.add_mutually_exclusive_group(required=True)
@@ -76,6 +80,10 @@ async def local(args, settings):
             from omnitest.demo import seed_demo
 
             value = seed_demo(resources, args.base_url)
+        elif args.command == "seed-phase2":
+            from omnitest.phase2_demo import seed_phase2
+
+            value = seed_phase2(resources, settings, args.base_url, args.tcp_host, args.tcp_port)
         elif args.command == "list":
             value = resources.list(args.kind, args.project)
         elif args.command == "report":

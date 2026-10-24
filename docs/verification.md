@@ -55,4 +55,6 @@ python scripts/acceptance.py --data-dir data/release
 
 本机没有 Docker，因此未执行 Docker build／Compose；已提供可执行配置和中文说明。GitHub Actions 已配置 Linux 检查，但本次没有远程仓库，也没有实际触发 CI。Linux／macOS 尚未在本次环境实测。
 
+首次发布后补充：主分支已在 GitHub 托管 Ubuntu 环境完成真实 CI，后端测试、前端检查／构建和端到端验收全部通过，见 [Linux CI 记录](https://github.com/Sver0411/OmniTest/actions/runs/40079631588)。上文“未触发 CI”描述的是发布前的本地验收时点。
+
 当前为本地单管理员 MVP，提供间隔调度、JSON 配置编辑和受控程序执行；不含 cron、RBAC、分布式 worker、OS 级资源配额，以及完整的 Windows 子进程树隔离。具体限制见架构说明和 README。AI 只提供可选扩展契约，未实现模型调用。

@@ -19,7 +19,7 @@ Python 执行内核、FastAPI 管理 API、React 管理界面和独立 CLI。真
 - **多种使用入口**：Web 管理界面、CLI 和 REST API。
 - **AI 可选**：自动化核心不依赖 AI；第一阶段只定义独立扩展接口。
 
-当前版本为 **Phase 1 / v0.1.0**。数据库、协议与性能测试将在第二阶段扩展，未实现的能力不会在界面中伪装为可用功能。
+**Phase 1 / v0.1.0** 已完成。当前开发增量加入 SQLite 只读数据库、TCP 和受限 HTTP 性能测试；第二阶段仍在推进，详见 [Phase 2 使用说明](docs/phase2.md)。未实现的能力不会在界面中伪装为可用功能。
 
 ![OmniTest 工作台](docs/images/dashboard.png)
 
@@ -140,7 +140,9 @@ python scripts/acceptance.py --data-dir data/acceptance
 
 运行记录保存在 `data/acceptance/omnitest.db`，结果摘要 `summary.json`，CLI 报告 `cli-pass-*.json`，截图 `dashboard-*.png`。完整验证范围与已知限制见 [验收记录](docs/verification.md)。
 
-本次交付实际验收目录为 `data/release`。使用 `omnitest --data-dir data/release serve` 可直接查看已经运行的结果。
+验收运行数据不提交到 Git。运行验收脚本后，可用 `omnitest --data-dir data/acceptance serve` 查看生成的结果。
+
+第二阶段增量验证：`python scripts/acceptance_phase2.py`。它会真实运行数据库、TCP 和 HTTP 性能套件，数据与截图保存到 `data/phase2`。
 
 ## 配置与执行边界
 
@@ -174,7 +176,9 @@ docker compose up -d platform
 
 已实现：项目／目标／用例／套件／环境／持久化间隔调度 CRUD、Test IR、适配器协议与 entry point 插件发现、HTTP／Web／CLI／文件检查、统一断言、前置条件、数据驱动、顺序与受控并发、重试／超时／取消、任务快照、结果中心、历史趋势、截图与文件证据、JSON／JUnit 导出、CLI、深浅主题。
 
-尚未实现：图形化步骤编排器、cron／时区日历调度、Web 录制、Allure 集成、多租户和 RBAC、进程级 CPU／内存配额、远程执行节点、AI Provider 调用，以及 Appium／数据库／MQTT／gRPC／性能执行器。适配器页面展示已安装信息和运行要求，具体依赖检查发生在执行时；不会把未安装浏览器显示成已验证可用。
+新增增量：只读 SQLite 查询与绑定参数、TCP 文本／二进制交互、需单独授权的有界 HTTP 性能工作负载及真实延迟／错误率统计。所有新增执行器均通过插件入口注册。
+
+尚未实现：图形化步骤编排器、cron／时区日历调度、Web 录制、Allure 集成、多租户和 RBAC、进程级 CPU／内存配额、远程执行节点、AI Provider 调用，以及 Appium／PostgreSQL／MySQL／MQTT／gRPC 和大规模压力执行器。适配器页面展示已安装信息和运行要求，具体依赖检查发生在执行时；不会把未安装浏览器显示成已验证可用。
 
 路线：Phase 2 扩展数据库与协议、增强环境和调度；Phase 3 接入独立可选 AI；Phase 4 按设备条件扩展 App／Desktop／gRPC；Phase 5 再引入多用户和多节点。
 
@@ -184,6 +188,7 @@ docker compose up -d platform
 - [Test IR 与断言](docs/test-ir.md)
 - [插件开发](docs/plugins.md)
 - [可选 AI 扩展接口](docs/ai-extension.md)
+- [第二阶段增量与示例](docs/phase2.md)
 - [实际验收记录](docs/verification.md)
 
 MIT License。

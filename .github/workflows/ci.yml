@@ -22,6 +22,7 @@ jobs:
       - run: npm --prefix frontend run check
       - run: npm --prefix frontend run build
       - run: python scripts/acceptance.py
+      - run: python scripts/acceptance_phase2.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -29,3 +30,4 @@ jobs:
           path: |
             data/test-results.xml
             data/acceptance/
+            data/phase2/

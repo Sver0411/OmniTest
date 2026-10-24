@@ -17,6 +17,9 @@ omnitest = "omnitest.cli:main"
 
 [project.entry-points."omnitest.adapters"]
 filecheck = "omnitest.adapters.filecheck:FileAdapter"
+database = "omnitest.adapters.database:DatabaseAdapter"
+tcp = "omnitest.adapters.tcp:TcpAdapter"
+http-performance = "omnitest.adapters.performance:HttpPerformanceAdapter"
 
 [tool.setuptools.packages.find]
 where = ["backend"]
