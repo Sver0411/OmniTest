@@ -23,6 +23,7 @@ jobs:
       - run: pytest -q --junitxml=data/test-results.xml
       - run: python scripts/acceptance.py
       - run: python scripts/acceptance_phase2.py
+      - run: python scripts/acceptance_phase4.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -31,3 +32,4 @@ jobs:
             data/test-results.xml
             data/acceptance/
             data/phase2/
+            data/phase4/

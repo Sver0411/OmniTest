@@ -58,3 +58,19 @@ python scripts/acceptance.py --data-dir data/release
 首次发布后补充：主分支已在 GitHub 托管 Ubuntu 环境完成真实 CI，后端测试、前端检查／构建和端到端验收全部通过，见 [Linux CI 记录](https://github.com/Sver0411/OmniTest/actions/runs/40079631588)。上文“未触发 CI”描述的是发布前的本地验收时点。
 
 当前为本地单管理员 MVP，提供间隔调度、JSON 配置编辑和受控程序执行；不含 cron、RBAC、分布式 worker、OS 级资源配额，以及完整的 Windows 子进程树隔离。具体限制见架构说明和 README。AI 只提供可选扩展契约，未实现模型调用。
+
+## 2026-10-24 第四阶段增量验收
+
+本节记录当前增量；上文是第一阶段验收时点。第三阶段已实现可选 Provider 调用与建议工作流，仍未配置真实模型密钥，详见 [Phase 3](phase3.md)。
+
+- 全部后端测试 **85 passed**；Ruff、前端格式、TypeScript 和生产构建通过。JUnit 位于本地 `data/phase4-tests.xml`，仍有 1 条既有 Starlette/httpx 测试集成弃用提示。
+- 第一阶段回归：CLI 两次各 22 PASSED；Web 22 PASSED；预期诊断 1 FAILED + 1 ERROR；文件插件、重启后的调度、用例创建／复制／删除、深浅主题与两种宽度通过，记录于 `data/phase4-regression-core/summary.json`。
+- 第二阶段回归：CLI 两次各 9 PASSED；Web 9 PASSED；数据库、TCP 和基础性能执行正常，记录于 `data/phase4-regression-phase2/summary.json`。
+- 第四阶段协议与可靠性：CLI 两次各 5 PASSED；Web 5 PASSED，0 页面错误；验证真实 protobuf、RPC 错误码与 deadline、三阶段负载、2 次 503 后连续恢复和 JUnit 导出，记录于 `data/phase4/summary.json`。
+- Android：Windows 主机上的 Android 15 / API 35 x86_64 模拟器，UiAutomator2 8.7.0，实际编译、签名并安装 Java fixture，输入→点击→大写结果断言→截图，1 PASSED。报告 `data/device-android/device-report.json`，运行 `bbcb17b156804b1090cf07f3e669bf4c`。
+- Windows：Windows 11、Appium 3.8.0、WinCore 3.2.0，真实启动 WinForms fixture 并执行相同交互与截图，1 PASSED。报告 `data/device-windows/device-report.json`，运行 `92c0fc72117848fe999f46a8a7f4c0a0`。
+- 第三方包：安装独立 `omnitest-json-document` 包，通过 entry point 发现并读取真实 JSON；同时检查插件契约、加载错误和重复 id 隔离。
+
+本次安装 JDK、Android SDK 与系统镜像、Appium 和两种驱动，位于忽略的 `data/tooling`。WHPX 检查可用，没有修改固件、系统可选功能或重启。Android 用例运行在实际启动的模拟器内，不代表实体手机验收。
+
+iOS / macOS 缺少 Apple 主机与设备，只有连接协议实现，未完成平台验证。Docker、流式 gRPC、大规模负载、系统级故障注入仍未验证或实现。安装与复现步骤见 [Phase 4](phase4.md)。生成的数据库、APK、SDK、日志、截图、管理员配置和调试工具均不提交到 Git。

@@ -10,4 +10,5 @@ frontend/dist/
 *.log
 test-results/
 *.tsbuildinfo
+build/
 

@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "omnitest-json-document"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = ["omnitest>=0.1.0"]
+description = "JSON document inspection adapter for OmniTest"
+
+[project.entry-points."omnitest.adapters"]
+json-document = "omnitest_json_document:JsonDocumentAdapter"
+
+[tool.setuptools]
+py-modules = ["omnitest_json_document"]
