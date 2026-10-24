@@ -1,10 +1,9 @@
 """HTTP management API and production SPA hosting."""
 
-import hmac
 import json
 import logging
+import time
 from contextlib import asynccontextmanager
-from dataclasses import asdict
 from importlib.metadata import entry_points
 from pathlib import Path
 
@@ -12,13 +11,15 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import func, select, text
 
+from omnitest import __version__
 from omnitest.adapters.base import Registry
 from omnitest.config import Settings
 from omnitest.core.ir import Model, RunRequest
 from omnitest.core.security import Redactor, contained
-from omnitest.db import Database, Run
+from omnitest.db import AuditEvent, Database, Resource, Run
+from omnitest.services.access import AccessControl, Principal
 from omnitest.services.lock import WorkerLock
 from omnitest.services.orchestrator import Orchestrator, run_dict
 from omnitest.services.resources import SCHEMAS, Resources, resource_dict
@@ -40,6 +41,7 @@ def create_app(settings=None):
     registry = Registry(settings.plugins)
     resources = Resources(db, registry)
     orchestrator = Orchestrator(db, resources, settings, registry)
+    access = AccessControl(settings, db)
     worker_lock = WorkerLock(settings.data_dir)
 
     @asynccontextmanager
@@ -54,7 +56,7 @@ def create_app(settings=None):
             db.engine.dispose()
             worker_lock.release()
 
-    app = FastAPI(title="OmniTest", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="OmniTest", version=__version__, lifespan=lifespan)
     app.state.db, app.state.resources, app.state.orchestrator = db, resources, orchestrator
     app.state.extensions = {}
     for extension in entry_points(group="omnitest.extensions"):
@@ -67,8 +69,54 @@ def create_app(settings=None):
 
     @app.middleware("http")
     async def boundary(request: Request, call_next):
-        host = request.headers.get("host", "").split(":")[0]
-        if host not in {"127.0.0.1", "localhost", "testserver"} and not settings.api_token:
+        started = time.monotonic()
+        from omnitest.core.ir import uid
+
+        request_id = uid()
+        request.state.principal = Principal("anonymous", "anonymous", frozenset())
+        request.state.project_id = None
+        try:
+            response = await protected(request, call_next)
+        except HTTPException as exc:
+            response = JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+        except Exception:
+            logging.getLogger(__name__).exception("Request failed: %s", request_id)
+            response = JSONResponse({"detail": "Internal server error"}, status_code=500)
+        response.headers["X-Request-ID"] = request_id
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        audited = request.method not in {"GET", "HEAD", "OPTIONS"} or response.status_code in {
+            401,
+            403,
+        }
+        if request.url.path.startswith("/api/") and audited:
+            actor = request.state.principal
+            try:
+                with db.session.begin() as session:
+                    session.add(
+                        AuditEvent(
+                            actor=actor.name,
+                            role=actor.role,
+                            method=request.method,
+                            path=Redactor().clean(request.url.path[:500]),
+                            project_id=request.state.project_id,
+                            status_code=response.status_code,
+                            request_id=request_id,
+                            duration_ms=(time.monotonic() - started) * 1000,
+                        )
+                    )
+            except Exception:
+                logging.getLogger(__name__).exception(
+                    "Audit persistence failed for request %s", request_id
+                )
+        return response
+
+    async def protected(request, call_next):
+        host = request.url.hostname
+        if (
+            host not in {"127.0.0.1", "localhost", "testserver", "::1"}
+            and not settings.authentication
+        ):
             return JSONResponse(
                 {"detail": "Remote access requires OMNITEST_API_TOKEN"}, status_code=403
             )
@@ -78,16 +126,38 @@ def create_app(settings=None):
                 {"detail": "Cross-origin requests are disabled; use the Vite proxy"},
                 status_code=403,
             )
-        if request.url.path.startswith("/api/") and settings.api_token:
-            token = request.headers.get("authorization", "").removeprefix("Bearer ")
-            if not hmac.compare_digest(token, settings.api_token):
-                return JSONResponse({"detail": "Invalid API token"}, status_code=401)
-        if int(request.headers.get("content-length", "0")) > 5_000_000:
+        try:
+            length = int(request.headers.get("content-length", "0"))
+        except ValueError:
+            raise HTTPException(400, "Invalid Content-Length") from None
+        if length < 0 or length > 5_000_000:
             return JSONResponse({"detail": "Payload exceeds 5 MB"}, status_code=413)
-        response = await call_next(request)
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["Referrer-Policy"] = "no-referrer"
-        return response
+        if request.url.path.startswith("/api/") and request.url.path not in {
+            "/api/health",
+            "/api/ready",
+        }:
+            principal = access.authenticate(request.headers.get("authorization", ""))
+            request.state.principal = principal
+            if request.method in {"POST", "PUT", "PATCH"}:
+                data = await request.body()
+                if len(data) > 5_000_000:
+                    raise HTTPException(413, "Payload exceeds 5 MB")
+                try:
+                    payload = json.loads(data)
+                    if isinstance(payload, dict) and isinstance(payload.get("project_id"), str):
+                        request.state.project_id = payload["project_id"]
+                except ValueError:
+                    pass
+            parts = request.url.path.strip("/").split("/")
+            try:
+                if len(parts) >= 3 and parts[1] in {"runs", "evidence"}:
+                    request.state.project_id = access.project_for(Run, parts[2])
+                elif len(parts) == 4 and parts[1] == "resources" and parts[2] in SCHEMAS:
+                    request.state.project_id = access.project_for(Resource, parts[3], parts[2])
+            except HTTPException:
+                pass
+            await access.authorize(request, principal)
+        return await call_next(request)
 
     @app.exception_handler(LookupError)
     async def not_found(request, exc):
@@ -103,18 +173,68 @@ def create_app(settings=None):
         return {
             "status": "ok",
             "ai_enabled": app.state.extensions.get("ai", lambda: False)(),
-            "version": "0.1.0",
+            "version": __version__,
         }
+
+    @app.get("/api/session")
+    def current_session(request: Request):
+        return request.state.principal.describe()
+
+    @app.get("/api/ready")
+    def ready():
+        try:
+            with db.session() as session:
+                session.execute(text("SELECT 1"))
+            running = orchestrator.loop_task is not None and not orchestrator.loop_task.done()
+            return JSONResponse(
+                {
+                    "status": "ready" if running else "unavailable",
+                    "database": "ok",
+                    "worker": "running" if running else "stopped",
+                },
+                status_code=200 if running else 503,
+            )
+        except Exception:
+            return JSONResponse({"status": "unavailable", "database": "error"}, status_code=503)
+
+    @app.get("/api/operations")
+    def operations():
+        with db.session() as session:
+            counts = dict(
+                session.execute(select(Run.status, func.count()).group_by(Run.status)).all()
+            )
+            oldest = session.scalar(select(func.min(Run.created_at)).where(Run.status == "PENDING"))
+            audit_count = session.scalar(select(func.count()).select_from(AuditEvent))
+        return {
+            "version": __version__,
+            "worker": {
+                "active_runs": len(orchestrator.active),
+                "max_concurrency": settings.max_concurrency,
+            },
+            "runs": counts,
+            "oldest_pending_seconds": max(0, time.time() - oldest) if oldest else None,
+            "audit_events": audit_count,
+            "plugin_errors": registry.errors,
+        }
+
+    @app.get("/api/audit")
+    def audit(limit: int = 50, project_id: str | None = None):
+        with db.session() as session:
+            statement = select(AuditEvent).order_by(AuditEvent.created_at.desc())
+            if project_id:
+                statement = statement.where(AuditEvent.project_id == project_id)
+            return [
+                {column.name: getattr(row, column.name) for column in AuditEvent.__table__.columns}
+                for row in session.scalars(statement.limit(max(1, min(200, limit))))
+            ]
 
     @app.get("/api/adapters")
     def adapters():
-        return {
-            "items": [asdict(f.info) for f in registry.factories.values()],
-            "errors": registry.errors,
-        }
+        return registry.inventory()
 
     @app.get("/api/settings")
-    def system_settings():
+    def system_settings(request: Request):
+        admin = request.state.principal.admin
         return {
             "ai": {
                 "enabled": app.state.extensions.get("ai", lambda: False)(),
@@ -122,20 +242,26 @@ def create_app(settings=None):
                 "message": "Manage optional providers at /api/ai",
             },
             "max_concurrency": settings.max_concurrency,
-            "cli_programs": list(settings.cli_programs),
-            "appium_profiles": list(settings.appium_profiles),
-            "http_faults": list(settings.http_faults),
-            "allowed_remote_hosts": sorted(settings.allowed_hosts),
-            "authentication": bool(settings.api_token),
+            "cli_programs": list(settings.cli_programs) if admin else [],
+            "appium_profiles": list(settings.appium_profiles) if admin else [],
+            "http_faults": list(settings.http_faults) if admin else [],
+            "allowed_remote_hosts": sorted(settings.allowed_hosts) if admin else [],
+            "authentication": settings.authentication,
             "scheduler": "persistent interval",
+            "principal": request.state.principal.describe(),
             "schemas": {kind: schema.model_json_schema() for kind, schema in SCHEMAS.items()},
         }
 
     @app.get("/api/resources/{kind}")
-    def list_resources(kind: str, project_id: str | None = None):
+    def list_resources(kind: str, request: Request, project_id: str | None = None):
         if kind not in SCHEMAS:
             raise LookupError("Unknown resource kind")
-        return resources.list(kind, project_id)
+        principal = request.state.principal
+        return [
+            row
+            for row in resources.list(kind, project_id)
+            if principal.visible(row["id"] if kind == "projects" else row["project_id"])
+        ]
 
     @app.post("/api/resources/{kind}", status_code=201)
     def create_resource(kind: str, payload: ResourcePayload):
@@ -153,6 +279,8 @@ def create_app(settings=None):
 
     @app.get("/api/resources/{kind}/{identity}")
     def get_resource(kind: str, identity: str):
+        if kind not in SCHEMAS:
+            raise LookupError("Unknown resource kind")
         return resource_dict(resources.get(kind, identity))
 
     @app.put("/api/resources/{kind}/{identity}")
@@ -164,11 +292,12 @@ def create_app(settings=None):
         resources.delete(kind, identity)
 
     @app.post("/api/runs", status_code=202)
-    def submit_run(request: RunRequest):
-        return orchestrator.submit(request)
+    def submit_run(value: RunRequest, request: Request):
+        return orchestrator.submit(value, actor=request.state.principal.name)
 
     @app.get("/api/runs")
     def runs(
+        request: Request,
         project_id: str | None = None,
         status: str | None = None,
         adapter: str | None = None,
@@ -180,6 +309,9 @@ def create_app(settings=None):
 
         with db.session() as s:
             stmt = select(Run).order_by(Run.created_at.desc())
+            principal = request.state.principal
+            if not principal.admin and principal.project_ids is not None:
+                stmt = stmt.where(Run.project_id.in_(principal.project_ids))
             if project_id:
                 stmt = stmt.where(Run.project_id == project_id)
             if status:
@@ -255,9 +387,12 @@ def create_app(settings=None):
         return FileResponse(path, filename=filename)
 
     @app.get("/api/dashboard")
-    def dashboard(project_id: str | None = None):
+    def dashboard(request: Request, project_id: str | None = None):
+        principal = request.state.principal
         with db.session() as s:
             stmt = select(Run).order_by(Run.created_at.desc())
+            if not principal.admin and principal.project_ids is not None:
+                stmt = stmt.where(Run.project_id.in_(principal.project_ids))
             if project_id:
                 stmt = stmt.where(Run.project_id == project_id)
             rows = list(s.scalars(stmt.limit(30)))
@@ -267,8 +402,10 @@ def create_app(settings=None):
                 totals[status] = totals.get(status, 0) + count
         total = sum(totals.values())
         return {
-            "projects": len(resources.list("projects")),
-            "cases": len(resources.list("cases", project_id)),
+            "projects": sum(principal.visible(row["id"]) for row in resources.list("projects")),
+            "cases": sum(
+                principal.visible(row["project_id"]) for row in resources.list("cases", project_id)
+            ),
             "runs": len(rows),
             "counts": totals,
             "pass_rate": totals.get("PASSED", 0) / total if total else None,
@@ -277,6 +414,8 @@ def create_app(settings=None):
         }
 
     dist = Path("frontend/dist").resolve()
+    if not (dist / "index.html").is_file():
+        dist = Path(__file__).resolve().parents[1] / "static"
     if (dist / "assets").is_dir():
         app.mount("/assets", StaticFiles(directory=dist / "assets"), name="assets")
 

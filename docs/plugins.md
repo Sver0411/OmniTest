@@ -48,6 +48,8 @@ example = "your_package.adapter:ExampleAdapter"
 
 插件测试应覆盖：实际领域行为、非法配置、清理、超时／取消、输出可序列化、证据范围和敏感数据。不要以固定返回 PASSED 替代真实行为；适配器只返回观察值，通过与否交由统一断言和生命周期判断。
 
-独立分发示例：`examples/plugins/json_document` 有自己的 pyproject、版本和 entry point，不在 OmniTest 后端包内。使用 `pip install ./examples/plugins/json_document` 安装后，`json-document` 会被正常发现；目标类型为 file，配置 `{"path":"order.json"}`，`read` 步骤读取管理员 file_root 内的 UTF-8 JSON，结果位于 `$.document`。非法 JSON 会产生执行错误，路径越界和超过 1 MB 的文件会被拒绝。
+独立分发示例：`examples/plugins/json_document` 有自己的 pyproject、版本和 entry point，不在 OmniTest 后端包内。使用 `pip install ./examples/plugins/json_document` 安装后，`json-document` 会被正常发现；目标类型为 file，配置 `{"path":"order.json"}`，`read` 步骤读取管理员 file_root 内的 UTF-8 JSON，结果位于 `$.document`。非法 JSON 会产生执行错误，路径越界和超过 1 MB 的文件会被拒绝。v0.2.0 示例改用公开 `omnitest.sdk` 导入接口。
 
 注册时会检查 AdapterInfo、非空 capabilities / target_kinds 以及 async check / execute / close。损坏或重复插件记录为加载错误，不能覆盖已有适配器。开发锁文件安装此示例包，测试会使用实际安装元数据发现并读取真实文件；没有将插件路径硬编码到 Registry。
+
+插件 API 与包版本分开管理：当前 `AdapterInfo.api_version=1`，省略时默认 1；不兼容版本会在初始化执行器前被拒绝。使用 `omnitest.sdk.validate_adapter(YourAdapter)` 做声明检查，`omnitest plugins` 查看实际安装分发包版本、执行器版本和加载错误。管理员通过已固定版本的包安装／升级并重启，不提供上传任意 Python 包的 Web API。

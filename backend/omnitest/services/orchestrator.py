@@ -41,10 +41,10 @@ class Orchestrator:
         self.active = {}
         self.loop_task = None
 
-    def submit(self, request: RunRequest, source="manual", session=None):
+    def submit(self, request: RunRequest, source="manual", session=None, actor=None):
         if session is None:
             with self.db.session.begin() as s:
-                return self.submit(request, source, s)
+                return self.submit(request, source, s, actor)
         s = session
         self.resources.get("projects", request.project_id, s)
         ids, concurrency, parameters = request.case_ids, request.concurrency, request.parameters
@@ -84,7 +84,7 @@ class Orchestrator:
             id=uid(),
             project_id=request.project_id,
             status="PENDING",
-            snapshot={"cases": cases, "concurrency": concurrency, "source": source},
+            snapshot={"cases": cases, "concurrency": concurrency, "source": source, "actor": actor},
             summary={},
         )
         s.add(run)
@@ -187,6 +187,9 @@ class Orchestrator:
                         item["target"],
                         item["variables"],
                         self.settings.data_dir / "evidence" / run_id / result_id,
+                        allowed_secrets=set(self.settings.project_secrets.get(run.project_id, []))
+                        if self.settings.access_tokens
+                        else None,
                     )
             except asyncio.CancelledError:
                 outcome = {
@@ -264,6 +267,7 @@ class Orchestrator:
             return {
                 **run_dict(run),
                 "source": run.snapshot["source"],
+                "submitted_by": run.snapshot.get("actor"),
                 "results": [
                     result_dict(r)
                     for r in sorted(rows, key=lambda r: positions.get(r.id, len(positions)))

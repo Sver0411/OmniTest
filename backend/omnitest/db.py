@@ -46,6 +46,20 @@ class CaseResult(Base):
     detail: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
+class AuditEvent(Base):
+    __tablename__ = "audit_events"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=uid)
+    created_at: Mapped[float] = mapped_column(Float, default=time.time, index=True)
+    actor: Mapped[str] = mapped_column(String)
+    role: Mapped[str] = mapped_column(String)
+    method: Mapped[str] = mapped_column(String)
+    path: Mapped[str] = mapped_column(String)
+    project_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    status_code: Mapped[int] = mapped_column()
+    request_id: Mapped[str] = mapped_column(String)
+    duration_ms: Mapped[float] = mapped_column(Float)
+
+
 class Database:
     def __init__(self, url):
         self.engine = create_engine(url, connect_args={"check_same_thread": False, "timeout": 30})

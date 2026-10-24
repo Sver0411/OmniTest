@@ -16,7 +16,7 @@ class Runner:
         self.registry = registry
         self.assertions = AssertionEngine()
 
-    async def execute(self, case_data, target, variables, evidence_dir):
+    async def execute(self, case_data, target, variables, evidence_dir, allowed_secrets=None):
         case = TestIR.model_validate(case_data)
         started = time.monotonic()
         attempts = []
@@ -44,7 +44,7 @@ class Runner:
             try:
                 async with asyncio.timeout(case.timeout):
                     preconditions = self.assertions.check(
-                        render_assertions(case.preconditions, variables), output
+                        render_assertions(case.preconditions, variables, allowed_secrets), output
                     )
                     detail["preconditions"] = preconditions
                     if any(not a["passed"] for a in preconditions):
@@ -57,7 +57,9 @@ class Runner:
                         status = "PASSED"
                         for step in case.steps:
                             step_start = time.monotonic()
-                            resolved = Step.model_validate(render(step.model_dump(), variables))
+                            resolved = Step.model_validate(
+                                render(step.model_dump(), variables, allowed_secrets)
+                            )
                             context.logs.append(f"Starting {step.id}: {step.action}")
                             step_result = {
                                 "id": step.id,
@@ -90,7 +92,7 @@ class Runner:
                                 step_result.update(status="ERROR", error=str(exc))
                                 raise
                         checked = self.assertions.check(
-                            render_assertions(case.assertions, variables), output
+                            render_assertions(case.assertions, variables, allowed_secrets), output
                         )
                         detail["assertions"] = checked
                         if status == "PASSED" and any(not a["passed"] for a in checked):
@@ -148,7 +150,10 @@ class Runner:
         }
 
 
-def render_assertions(assertions, variables):
+def render_assertions(assertions, variables, allowed_secrets=None):
     from omnitest.core.ir import Assertion
 
-    return [Assertion.model_validate(render(a.model_dump(), variables)) for a in assertions]
+    return [
+        Assertion.model_validate(render(a.model_dump(), variables, allowed_secrets))
+        for a in assertions
+    ]

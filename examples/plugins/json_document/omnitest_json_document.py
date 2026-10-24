@@ -4,9 +4,8 @@ import json
 
 from pydantic import Field
 
-from omnitest.adapters.base import AdapterInfo
-from omnitest.core.ir import Model
 from omnitest.core.security import contained
+from omnitest.sdk import AdapterInfo, Model
 
 
 class Config(Model):
@@ -14,7 +13,7 @@ class Config(Model):
 
 
 class JsonDocumentAdapter:
-    info = AdapterInfo("json-document", "0.1.0", ["read"], ["UTF-8 JSON file"], ["file"])
+    info = AdapterInfo("json-document", "0.2.0", ["read"], ["UTF-8 JSON file"], ["file"])
 
     async def check(self, context):
         config = Config.model_validate(context.target["config"])

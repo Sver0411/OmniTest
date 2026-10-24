@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import "./styles.css";
 import AIWorkspace from "./AIWorkspace";
+import Operations from "./Operations";
 
 type Resource = {
   id: string;
@@ -57,6 +58,7 @@ const names: Record<string, string> = {
   settings: "系统设置",
   ai: "AI 辅助",
   environments: "测试环境",
+  operations: "运行维护",
 };
 const icons: Record<string, any> = {
   dashboard: LayoutDashboard,
@@ -71,6 +73,7 @@ const icons: Record<string, any> = {
   settings: Settings2,
   ai: Boxes,
   environments: Braces,
+  operations: Activity,
 };
 const date = (t?: number) =>
   t ? new Date(t * 1000).toLocaleString("zh-CN", { hour12: false }) : "—";
@@ -135,6 +138,12 @@ function App() {
   const [dashboard, setDashboard] = useState<any>(null);
   const [adapters, setAdapters] = useState<any[]>([]);
   const [system, setSystem] = useState<any>(null);
+  const permissions = system?.principal?.permissions || {
+    admin: false,
+    manage: false,
+    execute: false,
+  };
+  const [credentialEpoch, setCredentialEpoch] = useState(0);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(true);
@@ -156,6 +165,25 @@ function App() {
   const [token, setToken] = useState(
     sessionStorage.getItem("omnitest-token") || "",
   );
+  function saveToken() {
+    sessionStorage.setItem("omnitest-token", token);
+    refreshVersion.current += 1;
+    setSystem(null);
+    setProjects([]);
+    setRows([]);
+    setRuns([]);
+    setDashboard(null);
+    setTargets([]);
+    setCaseOptions([]);
+    setSuiteOptions([]);
+    setEnvironments([]);
+    setReport(null);
+    setEditor(null);
+    setProject("");
+    setSelected([]);
+    setError("");
+    setCredentialEpoch((value) => value + 1);
+  }
   const [targets, setTargets] = useState<Resource[]>([]);
   const [suiteOptions, setSuiteOptions] = useState<Resource[]>([]);
   const [caseOptions, setCaseOptions] = useState<Resource[]>([]);
@@ -246,7 +274,7 @@ function App() {
     setSelected([]);
     setEnvironment("");
     refresh();
-  }, [page, project, filterAdapter, filterSince, filterUntil]);
+  }, [page, project, filterAdapter, filterSince, filterUntil, credentialEpoch]);
   useEffect(() => {
     const timer = setInterval(() => {
       if (["dashboard", "execution", "reports"].includes(page)) refresh(true);
@@ -326,6 +354,7 @@ function App() {
     }
   }
   function openEditor(kind: string, row?: Resource, copy = false) {
+    if (!permissions.manage) return;
     let body = row ? structuredClone(row.body) : template(kind);
     if (copy) {
       delete body.id;
@@ -362,6 +391,7 @@ function App() {
     await refresh();
   }
   async function startRun(payload: any) {
+    if (!permissions.execute) throw new Error("当前凭据没有执行权限");
     const value = await api("/runs", {
       method: "POST",
       body: pretty({
@@ -384,16 +414,18 @@ function App() {
       r.id.includes(search) ||
       r.status.toLowerCase().includes(search.toLowerCase()),
   );
-  const createButton = (kind: string) => (
-    <button
-      className="primary"
-      disabled={busy || (kind !== "projects" && !project)}
-      onClick={() => openEditor(kind)}
-    >
-      <Plus size={16} />
-      新建{names[kind]?.replace("管理", "").replace("测试", "")}
-    </button>
-  );
+  const createButton = (kind: string) =>
+    !permissions.manage ||
+    (kind === "projects" && !permissions.admin) ? null : (
+      <button
+        className="primary"
+        disabled={busy || (kind !== "projects" && !project)}
+        onClick={() => openEditor(kind)}
+      >
+        <Plus size={16} />
+        新建{names[kind]?.replace("管理", "").replace("测试", "")}
+      </button>
+    );
   const runTable = (items: Run[], compact = false) =>
     items.length ? (
       <div className="table-wrap">
@@ -494,8 +526,18 @@ function App() {
             );
           })}
           <div className="nav-divider" />
-          {["adapters", "schedules", "environments", "ai", "settings"].map(
-            (p) => {
+          {[
+            "adapters",
+            "schedules",
+            "environments",
+            "ai",
+            "operations",
+            "settings",
+          ]
+            .filter(
+              (p) => !["ai", "operations"].includes(p) || permissions.admin,
+            )
+            .map((p) => {
               const Icon = icons[p];
               return (
                 <button
@@ -507,8 +549,7 @@ function App() {
                   {names[p]}
                 </button>
               );
-            },
-          )}
+            })}
         </nav>
       </aside>
       <main>
@@ -528,6 +569,19 @@ function App() {
               ))}
             </select>
           </label>
+          {system?.principal && (
+            <span aria-label="当前访问身份">
+              {system.principal.name} ·{" "}
+              {
+                {
+                  admin: "管理员",
+                  editor: "编辑者",
+                  operator: "执行者",
+                  viewer: "只读",
+                }[system.principal.role as string]
+              }
+            </span>
+          )}
           <button
             className="icon-button"
             aria-label="切换主题"
@@ -550,7 +604,7 @@ function App() {
                 <RefreshCw size={15} className={loading ? "spin" : ""} />
                 刷新
               </button>
-              {page === "dashboard" ? (
+              {page === "dashboard" && permissions.execute ? (
                 <button className="primary" onClick={() => go("execution")}>
                   <Play size={15} />
                   启动测试
@@ -699,7 +753,7 @@ function App() {
                     </div>
                     <span className="muted">{filtered.length} 条记录</span>
                     <div className="spacer" />
-                    {page === "cases" && (
+                    {page === "cases" && permissions.manage && (
                       <>
                         <label className="button">
                           <ArrowDownToLine size={15} />
@@ -821,7 +875,9 @@ function App() {
                                     <button
                                       aria-label="运行"
                                       title="运行"
-                                      disabled={busy || !project}
+                                      disabled={
+                                        busy || !project || !permissions.execute
+                                      }
                                       onClick={() =>
                                         act(() =>
                                           startRun(
@@ -836,6 +892,7 @@ function App() {
                                     </button>
                                   )}
                                   <button
+                                    disabled={!permissions.manage}
                                     onClick={() => {
                                       if (row.project_id)
                                         setProject(row.project_id);
@@ -847,6 +904,7 @@ function App() {
                                   {page === "cases" && (
                                     <button
                                       aria-label="复制用例"
+                                      disabled={!permissions.manage}
                                       onClick={() => {
                                         if (row.project_id)
                                           setProject(row.project_id);
@@ -859,6 +917,11 @@ function App() {
                                   <button
                                     className="danger-text"
                                     aria-label="删除"
+                                    disabled={
+                                      !permissions.manage ||
+                                      (page === "projects" &&
+                                        !permissions.admin)
+                                    }
                                     onClick={() => {
                                       if (
                                         confirm(
@@ -934,7 +997,9 @@ function App() {
                           </label>
                           <button
                             className="primary"
-                            disabled={busy || !selected.length}
+                            disabled={
+                              busy || !selected.length || !permissions.execute
+                            }
                             onClick={() =>
                               act(() =>
                                 startRun({ case_ids: selected, concurrency }),
@@ -973,7 +1038,7 @@ function App() {
                           {suiteOptions.map((s) => (
                             <button
                               key={s.id}
-                              disabled={busy}
+                              disabled={busy || !permissions.execute}
                               onClick={() =>
                                 act(() => startRun({ suite_id: s.id }))
                               }
@@ -1041,6 +1106,13 @@ function App() {
                       <span className="muted">版本 {a.version}</span>
                       <h2>{a.id.toUpperCase()} Adapter</h2>
                       <p>目标类型：{a.target_kinds.join(", ")}</p>
+                      <p>
+                        安装包：
+                        {a.package
+                          ? `${a.package.name} ${a.package.version}`
+                          : "手动注册"}{" "}
+                        · API {a.api_version}
+                      </p>
                       <div className="tags">
                         {a.capabilities.map((c: string) => (
                           <span className="neutral-tag" key={c}>
@@ -1060,8 +1132,11 @@ function App() {
                   ))}
                 </div>
               )}
-              {page === "ai" && (
+              {page === "ai" && permissions.admin && (
                 <AIWorkspace project={project} api={api} onError={setError} />
+              )}
+              {page === "operations" && permissions.admin && (
+                <Operations api={api} onError={setError} />
               )}
               {page === "settings" && system && (
                 <div className="settings-grid">
@@ -1073,11 +1148,17 @@ function App() {
                       <dt>任务调度</dt>
                       <dd>持久化间隔调度</dd>
                       <dt>CLI 程序白名单</dt>
-                      <dd>{system.cli_programs.join(", ") || "空"}</dd>
+                      <dd>
+                        {permissions.admin
+                          ? system.cli_programs.join(", ") || "空"
+                          : "仅管理员可见"}
+                      </dd>
                       <dt>远程目标白名单</dt>
                       <dd>
-                        {system.allowed_remote_hosts.join(", ") ||
-                          "默认仅 loopback"}
+                        {permissions.admin
+                          ? system.allowed_remote_hosts.join(", ") ||
+                            "默认仅 loopback"
+                          : "仅管理员可见"}
                       </dd>
                       <dt>API 认证</dt>
                       <dd>
@@ -1094,11 +1175,11 @@ function App() {
                     </button>
                   </section>
                   <section className="panel settings-card">
-                    <h2>AI 设置</h2>
-                    <span className="neutral-tag">默认关闭</span>
-                    <p>在“AI 辅助”页面管理可选 Provider。</p>
-                    <hr />
-                    <h3>API 访问令牌</h3>
+                    <h2>API 访问令牌</h2>
+                    <p>
+                      当前身份：{system.principal.name}，角色：
+                      {system.principal.role}。
+                    </p>
                     <p>若服务端启用认证，在当前浏览器会话保存令牌。</p>
                     <input
                       aria-label="API 访问令牌"
@@ -1107,14 +1188,7 @@ function App() {
                       onChange={(e) => setToken(e.target.value)}
                       placeholder="Bearer token"
                     />
-                    <button
-                      onClick={() => {
-                        sessionStorage.setItem("omnitest-token", token);
-                        refresh();
-                      }}
-                    >
-                      保存到当前会话
-                    </button>
+                    <button onClick={saveToken}>保存到当前会话</button>
                   </section>
                 </div>
               )}
@@ -1128,15 +1202,7 @@ function App() {
                     value={token}
                     onChange={(e) => setToken(e.target.value)}
                   />
-                  <button
-                    onClick={() => {
-                      sessionStorage.setItem("omnitest-token", token);
-                      setError("");
-                      refresh();
-                    }}
-                  >
-                    保存到当前会话
-                  </button>
+                  <button onClick={saveToken}>保存到当前会话</button>
                 </section>
               )}
             </>
@@ -1260,7 +1326,7 @@ function App() {
                 {report.results?.length || 0} 个测试
               </span>
               <div className="spacer" />
-              {!terminal(report.status) && (
+              {!terminal(report.status) && permissions.execute && (
                 <button
                   onClick={() =>
                     act(async () =>

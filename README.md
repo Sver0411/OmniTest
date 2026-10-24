@@ -17,11 +17,15 @@ Python 执行内核、FastAPI 管理 API、React 管理界面和独立 CLI。真
 - **测试管理**：项目、授权目标、用例、套件、环境和持久化定时任务。
 - **执行与报告**：并发限制、超时、重试、取消、历史记录、截图与文件证据、JSON / JUnit 导出。
 - **多种使用入口**：Web 管理界面、CLI 和 REST API。
+- **共享与运维**：项目范围的管理员／编辑者／执行者／只读凭据、操作审计、就绪检查、运行维护、离线备份恢复。
+- **安装与扩展**：包含界面与迁移的 wheel、公开适配器 SDK、插件 API 版本检查与安装包清单。
 - **AI 可选**：自动化核心不依赖 AI；支持可选 Provider、用例生成、失败分析、覆盖与修复建议、报告总结。
 
 **Phase 1 / v0.1.0** 已完成。第二阶段加入 SQLite、TCP 和基础性能测试，仍有 MQTT 等后续项，详见 [Phase 2](docs/phase2.md)。第三阶段可选 AI 增强已实现，见 [Phase 3](docs/phase3.md)。第四阶段增加 protobuf gRPC、分阶段负载、HTTP 故障恢复与 Appium，已在 Android 模拟器和 Windows 原生应用完成实际验证；Apple 平台连接待独立 Mac 主机验证，详见 [Phase 4](docs/phase4.md)。
 
 ![OmniTest 工作台](docs/images/dashboard.png)
+
+当前版本 **v0.2.0**。第五阶段工程化增量提供权限、审计、运维、备份恢复与独立安装包，使用说明和实现边界见 [Phase 5](docs/phase5.md)。
 
 ## 环境与安装
 
@@ -123,6 +127,9 @@ Content-Type: application/json
 - `GET /api/runs/{id}/export?format=json|junit`：导出真实结果
 - `POST /api/cases/import`：`{"project_id":"...","cases":[TEST_IR,...]}`，整批事务导入，任何一项非法则回滚
 - `GET /api/settings`：JSON Schema、执行策略与 AI 关闭状态
+- `GET /api/session`：当前访问身份和权限
+- `GET /api/ready`：公开数据库与调度器就绪检查
+- `GET /api/operations`、`GET /api/audit`：管理员运行状态与请求审计
 
 UI 的 JSON 编辑器用于创建、编辑测试配置；右侧提供当前项目的目标、用例、套件和环境 ID。导出的用例可重新导入同一项目；导入其他项目前需将目标 ID 映射到该项目的目标。
 
@@ -146,13 +153,16 @@ python scripts/acceptance.py --data-dir data/acceptance
 
 第四阶段验证：`python scripts/acceptance_phase4.py`，覆盖真实 gRPC、分阶段负载、故障恢复和 Web 操作。设备测试使用 `scripts/acceptance_devices.py`，需要先配置 Appium 和实际设备环境，见 [配置与验证说明](docs/phase4.md)。
 
+第五阶段验证：`python scripts/acceptance_phase5.py`，验证不同角色、项目与证据隔离、身份切换、审计和备份恢复。发布包验证：先构建前端，再运行 `python -m build --wheel` 和 `python scripts/verify_wheel.py dist/omnitest-0.2.0-py3-none-any.whl`，检查离开源码目录后的安装运行。
+
 ## 配置与执行边界
 
-- `OMNITEST_DATA_DIR`：默认 `data`，包含数据库和 `evidence/`。备份时停止服务并复制整个目录，避免遗漏 WAL 和截图。
+- `OMNITEST_DATA_DIR`：默认 `data`，包含数据库和 `evidence/`。备份恢复使用本地 `omnitest backup / restore`，先停止同目录服务，详见第五阶段文档。
 - `OMNITEST_API_TOKEN`：启用 Bearer Token；绑定非 loopback 地址时必须设置。在设置页保存到当前浏览器会话，CLI 从同名环境变量读取。
 - `OMNITEST_ALLOWED_HOSTS`：逗号分隔的管理员批准远程主机名，默认仅允许 loopback IP 和 localhost。普通用户创建目标不能扩大服务器白名单。
 - `OMNITEST_CONFIG`：管理员配置 JSON 的路径，可配置 `allowed_hosts`、`cli_programs`、`file_root`、`database_root`、`grpc_descriptor_root`、`appium_profiles`、`http_faults`；Web API 无权修改。
 - `OMNITEST_SECRET_*`：敏感凭据仅通过环境变量提供，IR 使用 `${secret.OMNITEST_SECRET_NAME}` 引用。不要将真实密钥写入用例或环境 JSON。
+- `OMNITEST_ACCESS_*`：命名 API 身份的令牌，管理员配置 `access_tokens` 引用；不能通过 Test IR 读取。命名身份模式下，`project_secrets` 控制每个项目可使用的测试凭据，默认不分配。
 - `PLAYWRIGHT_BROWSERS_PATH`：浏览器安装和运行时须保持一致。
 
 所有目标须设置 `authorized: true`。HTTP 写请求还需目标 `config.allow_mutations: true`。API 不跟随重定向，Web 限制同源请求并禁止 WebSocket。每个用例有超时、最大 3 次重试，最多 100 步；每个任务最多 500 个参数化执行，运行中全局并发为 4。
@@ -161,7 +171,7 @@ CLI 不接受 shell 命令、可执行路径或任意工作目录，只接受服
 
 ## Docker Compose
 
-需要本机已安装并启动 Docker。此次环境未提供 Docker，文件已交付但未实测构建。
+需要运行 Docker 的主机。镜像通过 wheel 安装运行依赖与包内界面，以普通用户启动，并提供就绪健康检查；Linux CI 配置了实际构建、运行和重启验证。本机 Windows 未安装 Docker，容器验证在 CI 完成。
 
 ```bash
 cp .env.example .env
@@ -180,9 +190,9 @@ docker compose up -d platform
 
 新增增量：只读 SQLite、TCP、protobuf gRPC、分阶段 HTTP 负载及延迟／错误率、HTTP 故障注入与恢复观察、Appium 原生应用步骤与截图。Android API 35 模拟器和 Windows 11 WinForms 应用已实际验证；iOS / macOS 连接入口待设备验证。所有新增执行器均通过插件入口注册，另附可独立安装的 JSON 文档检查包。
 
-尚未实现：图形化步骤编排器、cron／时区日历调度、Web 录制、Allure 集成、多租户和 RBAC、进程级 CPU／内存配额、远程执行节点、PostgreSQL／MySQL／MQTT、大规模压力执行器、流式 gRPC、系统级 chaos，以及 iOS／macOS 设备验收。适配器页面展示已安装信息和运行要求，具体依赖检查发生在执行时。
+尚未实现：图形化步骤编排器、cron／时区日历调度、Web 录制、Allure 集成、独立租户隔离、SSO／成员数据库、进程级 CPU／内存配额、远程执行节点、PostgreSQL／MySQL／MQTT、大规模压力执行器、流式 gRPC、系统级 chaos，以及 iOS／macOS 设备验收。项目角色是共享管理权限，不能替代操作系统或设备隔离。
 
-路线：Phase 2 扩展数据库与协议、增强环境和调度；Phase 3 接入独立可选 AI；Phase 4 按设备条件扩展 App／Desktop／gRPC；Phase 5 再引入多用户和多节点。
+第五阶段已提供项目级角色、审计、恢复、SDK 和安装包；多节点、分布式执行及团队成员体系继续按实际部署需求推进。第二阶段 MQTT、日历调度和 Apple 平台实测仍有独立后续项。
 
 ## 工程文档
 
@@ -193,6 +203,7 @@ docker compose up -d platform
 - [第二阶段增量与示例](docs/phase2.md)
 - [第三阶段 AI 配置与使用](docs/phase3.md)
 - [第四阶段设备、协议与故障恢复](docs/phase4.md)
+- [第五阶段权限、运维、恢复与发布](docs/phase5.md)
 - [实际验收记录](docs/verification.md)
 
 MIT License。

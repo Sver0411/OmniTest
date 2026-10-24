@@ -30,11 +30,11 @@ def check_url(url: str, allowed_hosts: set[str]) -> str:
     return f"{parts.scheme}://{parts.netloc}"
 
 
-def render(value, variables: dict):
+def render(value, variables: dict, allowed_secrets=None):
     if isinstance(value, dict):
-        return {k: render(v, variables) for k, v in value.items()}
+        return {k: render(v, variables, allowed_secrets) for k, v in value.items()}
     if isinstance(value, list):
-        return [render(v, variables) for v in value]
+        return [render(v, variables, allowed_secrets) for v in value]
     if not isinstance(value, str):
         return value
 
@@ -43,6 +43,8 @@ def render(value, variables: dict):
             name = key[7:]
             if not name.startswith("OMNITEST_SECRET_"):
                 raise ValueError("Secret must use OMNITEST_SECRET_ prefix")
+            if allowed_secrets is not None and name not in allowed_secrets:
+                raise ValueError("Secret is not authorized for this project")
             return os.environ[name]
         return variables[key]
 
@@ -54,7 +56,11 @@ def render(value, variables: dict):
 
 class Redactor:
     def __init__(self, extra=()):
-        self.secrets = [v for k, v in os.environ.items() if k.startswith("OMNITEST_SECRET_")]
+        self.secrets = [
+            v
+            for k, v in os.environ.items()
+            if k.startswith(("OMNITEST_SECRET_", "OMNITEST_ACCESS_"))
+        ]
         self.secrets.extend(str(v) for v in extra if v)
 
     def clean(self, value):
