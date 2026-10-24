@@ -26,6 +26,7 @@ import {
   X,
 } from "lucide-react";
 import "./styles.css";
+import AIWorkspace from "./AIWorkspace";
 
 type Resource = {
   id: string;
@@ -54,6 +55,7 @@ const names: Record<string, string> = {
   adapters: "执行适配器",
   schedules: "定时任务",
   settings: "系统设置",
+  ai: "AI 辅助",
   environments: "测试环境",
 };
 const icons: Record<string, any> = {
@@ -67,6 +69,7 @@ const icons: Record<string, any> = {
   adapters: Boxes,
   schedules: CalendarClock,
   settings: Settings2,
+  ai: Boxes,
   environments: Braces,
 };
 const date = (t?: number) =>
@@ -491,19 +494,21 @@ function App() {
             );
           })}
           <div className="nav-divider" />
-          {["adapters", "schedules", "environments", "settings"].map((p) => {
-            const Icon = icons[p];
-            return (
-              <button
-                className={page === p ? "active" : ""}
-                key={p}
-                onClick={() => go(p)}
-              >
-                <Icon size={18} />
-                {names[p]}
-              </button>
-            );
-          })}
+          {["adapters", "schedules", "environments", "ai", "settings"].map(
+            (p) => {
+              const Icon = icons[p];
+              return (
+                <button
+                  className={page === p ? "active" : ""}
+                  key={p}
+                  onClick={() => go(p)}
+                >
+                  <Icon size={18} />
+                  {names[p]}
+                </button>
+              );
+            },
+          )}
         </nav>
       </aside>
       <main>
@@ -1055,6 +1060,9 @@ function App() {
                   ))}
                 </div>
               )}
+              {page === "ai" && (
+                <AIWorkspace project={project} api={api} onError={setError} />
+              )}
               {page === "settings" && system && (
                 <div className="settings-grid">
                   <section className="panel settings-card">
@@ -1088,7 +1096,7 @@ function App() {
                   <section className="panel settings-card">
                     <h2>AI 设置</h2>
                     <span className="neutral-tag">默认关闭</span>
-                    <p>当前版本未启用 AI Provider。</p>
+                    <p>在“AI 辅助”页面管理可选 Provider。</p>
                     <hr />
                     <h3>API 访问令牌</h3>
                     <p>若服务端启用认证，在当前浏览器会话保存令牌。</p>

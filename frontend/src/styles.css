@@ -1060,3 +1060,41 @@ dd {
     font-size: 9px;
   }
 }
+
+.ai-workspace {
+  display: grid;
+  gap: 24px;
+}
+.ai-workspace textarea {
+  width: 100%;
+  min-height: 150px;
+  padding: 14px;
+  margin: 14px 0;
+  background: var(--hover);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  font:
+    13px/1.6 Consolas,
+    monospace;
+}
+.ai-workspace .execution-options {
+  padding: 16px 0;
+  flex-wrap: wrap;
+}
+.ai-record {
+  border-top: 1px solid var(--border);
+  padding: 22px 0;
+}
+.ai-text {
+  white-space: pre-wrap;
+}
+.ai-record li {
+  margin: 8px 0;
+}
+.ai-record pre {
+  max-height: 400px;
+  overflow: auto;
+  background: var(--hover);
+  padding: 14px;
+}

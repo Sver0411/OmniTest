@@ -17,10 +17,10 @@ jobs:
       - run: python -m playwright install --with-deps chromium
       - run: ruff check backend scripts examples
       - run: ruff format --check backend scripts examples
-      - run: pytest -q --junitxml=data/test-results.xml
       - run: npm --prefix frontend ci
       - run: npm --prefix frontend run check
       - run: npm --prefix frontend run build
+      - run: pytest -q --junitxml=data/test-results.xml
       - run: python scripts/acceptance.py
       - run: python scripts/acceptance_phase2.py
       - uses: actions/upload-artifact@v4
