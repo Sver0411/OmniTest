@@ -16,8 +16,16 @@ def main():
     parser = argparse.ArgumentParser(prog="omnitest")
     parser.add_argument("--data-dir", default=os.getenv("OMNITEST_DATA_DIR", "data"))
     parser.add_argument("--url", help="Use a running API instead of opening the local database")
+    from omnitest import __version__
+
+    parser.add_argument("--version", action="version", version=__version__)
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("init")
+    backup_parser = sub.add_parser("backup")
+    backup_parser.add_argument("--output", required=True)
+    restore_parser = sub.add_parser("restore")
+    restore_parser.add_argument("--archive", required=True)
+    sub.add_parser("plugins")
     serve = sub.add_parser("serve")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8000)
@@ -46,10 +54,27 @@ def main():
     report.add_argument("run_id")
     report.add_argument("--output")
     args = parser.parse_args()
+    if args.command in {"backup", "restore"}:
+        from omnitest.services.backup import backup, restore
+
+        if args.url:
+            parser.error("Backup and restore require local filesystem access")
+        value = (
+            backup(args.data_dir, args.output)
+            if args.command == "backup"
+            else restore(args.archive, args.data_dir)
+        )
+        emit(value)
+        return
+    if args.command == "plugins" and not args.url:
+        from omnitest.adapters.base import Registry
+
+        emit(Registry().inventory())
+        return
     settings = Settings(data_dir=Path(args.data_dir))
     if args.command == "serve":
-        if args.host not in {"127.0.0.1", "localhost", "::1"} and not settings.api_token:
-            parser.error("Non-loopback binding requires OMNITEST_API_TOKEN")
+        if args.host not in {"127.0.0.1", "localhost", "::1"} and not settings.authentication:
+            parser.error("Non-loopback binding requires configured API credentials")
         import uvicorn
 
         from omnitest.api.app import create_app
@@ -128,6 +153,8 @@ async def remote(args, settings):
             )
         elif args.command == "report":
             response = await client.get(f"/api/runs/{args.run_id}")
+        elif args.command == "plugins":
+            response = await client.get("/api/adapters")
         elif args.command == "run":
             response = await client.post(
                 "/api/runs",

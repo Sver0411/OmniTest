@@ -1,11 +1,13 @@
 """Adapter contract and entry-point discovery."""
 
-from dataclasses import dataclass, field
+import re
+from dataclasses import asdict, dataclass, field
 from importlib.metadata import entry_points
 from inspect import iscoroutinefunction
 from pathlib import Path
 from typing import Any, Protocol
 
+from omnitest import __version__
 from omnitest.config import Settings
 from omnitest.core.ir import Step
 
@@ -17,6 +19,7 @@ class AdapterInfo:
     capabilities: list[str]
     requirements: list[str]
     target_kinds: list[str]
+    api_version: int = 1
 
 
 @dataclass
@@ -45,12 +48,22 @@ class Registry:
 
         self.factories = {}
         self.errors = []
+        self.packages = {}
         for factory in [HttpAdapter, WebAdapter, CliAdapter]:
             self.register(factory)
+            self.packages[factory.info.id] = {"name": "omnitest", "version": __version__}
         if plugins:
             for entry in entry_points(group="omnitest.adapters"):
                 try:
-                    self.register(entry.load())
+                    factory = entry.load()
+                    self.register(factory)
+                    distribution = getattr(entry, "dist", None)
+                    if distribution is not None:
+                        self.packages[factory.info.id] = {
+                            "name": distribution.metadata["Name"],
+                            "version": distribution.version,
+                            "entry_point": entry.value,
+                        }
                 except Exception as exc:
                     self.errors.append(f"{entry.name}: {exc}")
 
@@ -58,6 +71,15 @@ class Registry:
         info = getattr(factory, "info", None)
         if not isinstance(info, AdapterInfo) or not info.id or not info.version:
             raise ValueError("Plugin must declare AdapterInfo with id and version")
+        if (
+            not callable(factory)
+            or not isinstance(info.id, str)
+            or not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,99}", info.id)
+            or not isinstance(info.version, str)
+        ):
+            raise ValueError("Plugin factory, id or version is invalid")
+        if info.api_version != 1:
+            raise ValueError(f"Unsupported adapter API version: {info.api_version}; expected 1")
         for name in ["capabilities", "target_kinds", "requirements"]:
             values = getattr(info, name)
             if not isinstance(values, list) or any(not isinstance(v, str) or not v for v in values):
@@ -70,6 +92,16 @@ class Registry:
         if factory.info.id in self.factories:
             raise ValueError(f"Duplicate adapter: {factory.info.id}")
         self.factories[factory.info.id] = factory
+
+    def inventory(self):
+        return {
+            "api_version": 1,
+            "items": [
+                {**asdict(factory.info), "package": self.packages.get(name)}
+                for name, factory in self.factories.items()
+            ],
+            "errors": self.errors,
+        }
 
     def create(self, name):
         if name not in self.factories:

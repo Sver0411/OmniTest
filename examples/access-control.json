@@ -1,0 +1,11 @@
+{
+  "access_tokens": [
+    {"name":"administrator","role":"admin","token_env":"OMNITEST_ACCESS_ADMIN"},
+    {"name":"project-editor","role":"editor","token_env":"OMNITEST_ACCESS_EDITOR","project_ids":["PROJECT_ID"]},
+    {"name":"test-operator","role":"operator","token_env":"OMNITEST_ACCESS_OPERATOR","project_ids":["PROJECT_ID"]},
+    {"name":"report-viewer","role":"viewer","token_env":"OMNITEST_ACCESS_VIEWER","project_ids":["PROJECT_ID"]}
+  ],
+  "project_secrets": {
+    "PROJECT_ID": ["OMNITEST_SECRET_STAGING_KEY"]
+  }
+}

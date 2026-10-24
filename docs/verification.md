@@ -74,3 +74,15 @@ python scripts/acceptance.py --data-dir data/release
 本次安装 JDK、Android SDK 与系统镜像、Appium 和两种驱动，位于忽略的 `data/tooling`。WHPX 检查可用，没有修改固件、系统可选功能或重启。Android 用例运行在实际启动的模拟器内，不代表实体手机验收。
 
 iOS / macOS 缺少 Apple 主机与设备，只有连接协议实现，未完成平台验证。Docker、流式 gRPC、大规模负载、系统级故障注入仍未验证或实现。安装与复现步骤见 [Phase 4](phase4.md)。生成的数据库、APK、SDK、日志、截图、管理员配置和调试工具均不提交到 Git。
+
+## 第五阶段 v0.2.0 验证
+
+- 后端完整回归 **107 passed**；新增角色与项目范围、测试凭据范围、令牌命名空间、审计、归档校验、SDK 版本拒绝及旧数据库迁移测试。记录 `data/phase5-tests.xml`，仍有 1 条既有 Starlette/httpx 测试集成弃用提示。
+- 第一阶段：两次 CLI 各 22 PASSED、Web 22 PASSED；预期诊断 1 FAILED + 1 ERROR；调度重启、文件插件、资源管理和主题正常，见 `data/phase5-regression-core/summary.json`。
+- 第二阶段：两次 CLI 各 9 PASSED、Web 9 PASSED，见 `data/phase5-regression-phase2/summary.json`。
+- 第四阶段：两次 CLI 各 5 PASSED、Web 5 PASSED，见 `data/phase5-regression-phase4/summary.json`。
+- 共享访问演练：生成独立身份，检查只读／执行／管理员界面、项目和截图隔离、请求审计；API 与 Web 各执行 2 项（HTTP + 实际浏览器截图）并通过。离线备份恢复后复查历史与 PNG 证据，见 `data/phase5/summary.json`。
+- wheel 独立安装：新建虚拟环境，在源码目录之外加载包内 UI、迁移数据库、真实执行 1 项 HTTP 测试，安装独立 JSON SDK 插件并检查发现与协议声明；全部通过，见 `data/phase5/wheel-summary.json`。
+- 当前本地工作台升级前已归档原数据库与证据；v0.2.0 `/api/ready` 返回 ready，已有历史保留。本机仍为原有本地管理员模式，没有自动启用共享身份或向用户暴露临时演练令牌。
+
+新的 CI 同时覆盖 Ubuntu 与 Windows，并构建、验证和上传 wheel。这里的本地结果不代表分布式执行、SSO、OS 沙箱或新增 Apple 设备验收；这些能力仍在后续范围。

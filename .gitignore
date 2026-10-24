@@ -11,4 +11,5 @@ frontend/dist/
 test-results/
 *.tsbuildinfo
 build/
+dist/
 

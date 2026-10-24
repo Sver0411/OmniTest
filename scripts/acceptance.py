@@ -69,11 +69,15 @@ def main():
         return process
 
     def cli(*args, expected=0):
-        executable = str(
-            Path(sys.executable).with_name("omnitest.exe" if os.name == "nt" else "omnitest")
-        )
         result = subprocess.run(
-            [executable, "--data-dir", str(folder), *args],
+            [
+                sys.executable,
+                "-c",
+                "from omnitest.cli import main; main()",
+                "--data-dir",
+                str(folder),
+                *args,
+            ],
             cwd=ROOT,
             env=env,
             capture_output=True,

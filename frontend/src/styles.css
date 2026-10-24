@@ -1098,3 +1098,14 @@ dd {
   background: var(--hover);
   padding: 14px;
 }
+.operations-layout {
+  display: grid;
+  gap: 20px;
+}
+.audit-request {
+  display: block;
+  max-width: min(35vw, 360px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

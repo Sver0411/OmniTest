@@ -1,0 +1,3 @@
+include README.md LICENSE
+recursive-include frontend/dist *
+recursive-include backend/omnitest/migrations *.py
