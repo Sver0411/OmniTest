@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass, field
 from importlib.metadata import entry_points
+from inspect import iscoroutinefunction
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -54,6 +55,18 @@ class Registry:
                     self.errors.append(f"{entry.name}: {exc}")
 
     def register(self, factory):
+        info = getattr(factory, "info", None)
+        if not isinstance(info, AdapterInfo) or not info.id or not info.version:
+            raise ValueError("Plugin must declare AdapterInfo with id and version")
+        for name in ["capabilities", "target_kinds", "requirements"]:
+            values = getattr(info, name)
+            if not isinstance(values, list) or any(not isinstance(v, str) or not v for v in values):
+                raise ValueError(f"Plugin {name} must be a list of non-empty strings")
+        if not info.target_kinds or not info.capabilities:
+            raise ValueError("Plugin must declare target kinds and capabilities")
+        for name in ["check", "execute", "close"]:
+            if not iscoroutinefunction(getattr(factory, name, None)):
+                raise ValueError(f"Plugin must implement async {name}")
         if factory.info.id in self.factories:
             raise ValueError(f"Duplicate adapter: {factory.info.id}")
         self.factories[factory.info.id] = factory

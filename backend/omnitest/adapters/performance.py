@@ -26,11 +26,15 @@ class Workload(Model):
     headers: dict[str, str] = Field(default_factory=dict)
 
 
+class StagedWorkload(Model):
+    stages: list[Workload] = Field(min_length=1, max_length=5)
+
+
 class HttpPerformanceAdapter:
     info = AdapterInfo(
         "http-performance",
-        "1.0",
-        ["load", "latency", "percentiles", "throughput", "error_rate"],
+        "1.1",
+        ["load", "stages", "latency", "percentiles", "throughput", "error_rate"],
         ["httpx", "target allow_performance=true"],
         ["http"],
     )
@@ -48,23 +52,48 @@ class HttpPerformanceAdapter:
         )
 
     async def execute(self, step, context):
+        if step.action == "stages":
+            workloads = StagedWorkload.model_validate(step.config).stages
+            for workload in workloads:
+                self.workload_url(workload, context)
+            stages = []
+            for workload in workloads:
+                stages.append(await self.load(workload, context))
+            requests = sum(stage["requests"] for stage in stages)
+            failures = sum(stage["failures"] for stage in stages)
+            return {
+                "stages": stages,
+                "requests": requests,
+                "failures": failures,
+                "successes": requests - failures,
+                "error_rate": failures / requests,
+            }
         if step.action != "load":
-            raise ValueError("Performance adapter supports load only")
+            raise ValueError("Performance adapter supports load or stages")
         cfg = Workload.model_validate(step.config)
+        return await self.load(cfg, context)
+
+    def workload_url(self, cfg, context):
         url = urljoin(self.base, cfg.path)
         if check_url(url, context.settings.allowed_hosts) != self.origin:
             raise ValueError("Workload escapes target origin")
+        return url
+
+    async def load(self, cfg, context):
+        url = self.workload_url(cfg, context)
         semaphore = asyncio.Semaphore(cfg.concurrency)
         rate_lock = asyncio.Lock()
         started = time.monotonic()
-        next_start = started
+        next_start = max(started, getattr(self, "next_start", started))
 
         async def sample(index):
             nonlocal next_start
             async with semaphore:
                 async with rate_lock:
-                    await asyncio.sleep(max(0, next_start - time.monotonic()))
+                    while (remaining := next_start - time.monotonic()) > 0:
+                        await asyncio.sleep(remaining)
                     next_start = time.monotonic() + 1 / cfg.rate_per_second
+                    self.next_start = next_start
                 begin = time.monotonic()
                 status = None
                 error = None
@@ -83,6 +112,7 @@ class HttpPerformanceAdapter:
                     error = Redactor().clean(f"{type(exc).__name__}: {exc}")
                 return {
                     "index": index,
+                    "started_seconds": begin - started,
                     "elapsed_ms": (time.monotonic() - begin) * 1000,
                     "status_code": status,
                     "success": status == cfg.expected_status and error is None,

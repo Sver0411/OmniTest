@@ -11,6 +11,7 @@ dependencies = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1", "pydantic>=2.9,<3", "sq
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<10", "pytest-asyncio>=0.24,<2", "ruff>=0.8,<1"]
+grpc = ["grpcio>=1.70,<2", "protobuf>=6,<8"]
 
 [project.scripts]
 omnitest = "omnitest.cli:main"
@@ -20,6 +21,9 @@ filecheck = "omnitest.adapters.filecheck:FileAdapter"
 database = "omnitest.adapters.database:DatabaseAdapter"
 tcp = "omnitest.adapters.tcp:TcpAdapter"
 http-performance = "omnitest.adapters.performance:HttpPerformanceAdapter"
+grpc = "omnitest.adapters.grpc:GrpcAdapter"
+http-reliability = "omnitest.adapters.reliability:HttpReliabilityAdapter"
+appium = "omnitest.adapters.appium:AppiumAdapter"
 
 [project.entry-points."omnitest.extensions"]
 ai = "omnitest.ai.api:mount"

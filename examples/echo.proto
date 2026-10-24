@@ -1,0 +1,9 @@
+syntax = "proto3";
+package omnitest.fixture;
+import "google/protobuf/struct.proto";
+
+service EchoService {
+  rpc Echo(google.protobuf.Struct) returns (google.protobuf.Struct);
+  rpc Reject(google.protobuf.Struct) returns (google.protobuf.Struct);
+  rpc Slow(google.protobuf.Struct) returns (google.protobuf.Struct);
+}

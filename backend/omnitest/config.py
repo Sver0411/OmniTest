@@ -18,8 +18,11 @@ class Settings:
         )
     )
     cli_programs: dict = field(default_factory=dict)
+    appium_profiles: dict = field(default_factory=dict)
+    http_faults: dict = field(default_factory=dict)
     file_root: Path = field(default_factory=lambda: Path("examples/fixtures").resolve())
     database_root: Path | None = None
+    grpc_descriptor_root: Path | None = None
     max_concurrency: int = 4
     api_token: str = field(default_factory=lambda: os.getenv("OMNITEST_API_TOKEN", ""))
     plugins: bool = True
@@ -28,14 +31,22 @@ class Settings:
         self.data_dir = Path(self.data_dir).resolve()
         self.file_root = Path(self.file_root).resolve()
         self.database_root = Path(self.database_root or self.data_dir / "fixtures").resolve()
+        self.grpc_descriptor_root = Path(
+            self.grpc_descriptor_root or self.data_dir / "descriptors"
+        ).resolve()
         self.data_dir.mkdir(parents=True, exist_ok=True)
         config = os.getenv("OMNITEST_CONFIG")
         if config:
             value = json.loads(Path(config).read_text(encoding="utf-8"))
             self.cli_programs = value.get("cli_programs", {})
+            self.appium_profiles = value.get("appium_profiles", {})
+            self.http_faults = value.get("http_faults", {})
             self.allowed_hosts.update(value.get("allowed_hosts", []))
             self.file_root = Path(value.get("file_root", self.file_root)).resolve()
             self.database_root = Path(value.get("database_root", self.database_root)).resolve()
+            self.grpc_descriptor_root = Path(
+                value.get("grpc_descriptor_root", self.grpc_descriptor_root)
+            ).resolve()
         tool = Path("examples/tool.py").resolve()
         if tool.is_file():
             self.cli_programs.setdefault(

@@ -27,6 +27,10 @@ def main():
     phase2.add_argument("--base-url", default="http://127.0.0.1:8765")
     phase2.add_argument("--tcp-host", default="127.0.0.1")
     phase2.add_argument("--tcp-port", type=int, default=8766)
+    phase4 = sub.add_parser("seed-phase4")
+    phase4.add_argument("--base-url", default="http://127.0.0.1:8785")
+    phase4.add_argument("--grpc-host", default="127.0.0.1")
+    phase4.add_argument("--grpc-port", type=int, default=8786)
     run = sub.add_parser("run")
     run.add_argument("--project", required=True)
     choice = run.add_mutually_exclusive_group(required=True)
@@ -86,6 +90,10 @@ async def local(args, settings):
             value = seed_phase2(resources, settings, args.base_url, args.tcp_host, args.tcp_port)
         elif args.command == "list":
             value = resources.list(args.kind, args.project)
+        elif args.command == "seed-phase4":
+            from omnitest.phase4_demo import seed_phase4
+
+            value = seed_phase4(resources, args.base_url, args.grpc_host, args.grpc_port)
         elif args.command == "report":
             value = orchestrator.report(args.run_id)
         elif args.command == "run":

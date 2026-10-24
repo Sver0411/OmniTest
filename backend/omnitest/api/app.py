@@ -123,6 +123,8 @@ def create_app(settings=None):
             },
             "max_concurrency": settings.max_concurrency,
             "cli_programs": list(settings.cli_programs),
+            "appium_profiles": list(settings.appium_profiles),
+            "http_faults": list(settings.http_faults),
             "allowed_remote_hosts": sorted(settings.allowed_hosts),
             "authentication": bool(settings.api_token),
             "scheduler": "persistent interval",
