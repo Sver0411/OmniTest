@@ -3,6 +3,7 @@ import time
 import xml.etree.ElementTree as ET
 
 from fastapi.testclient import TestClient
+
 from omnitest.api.app import create_app
 from omnitest.config import Settings
 from omnitest.core.ir import RunRequest

@@ -1,7 +1,6 @@
 """Initial resource and immutable execution tables."""
 
 import sqlalchemy as sa
-
 from alembic import op
 
 revision = "0001"

@@ -4,6 +4,7 @@ import time
 
 import pytest
 import uvicorn
+
 from omnitest.adapters.base import Registry
 from omnitest.config import Settings
 from omnitest.db import Database

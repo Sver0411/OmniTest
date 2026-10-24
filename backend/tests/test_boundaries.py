@@ -1,6 +1,7 @@
 import time
 
 import pytest
+
 from omnitest.core.assertions import AssertionEngine
 from omnitest.core.ir import Assertion, RunRequest
 from omnitest.demo import seed_demo

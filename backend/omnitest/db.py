@@ -60,9 +60,8 @@ class Database:
     def migrate(self):
         from pathlib import Path
 
-        from alembic.config import Config
-
         from alembic import command
+        from alembic.config import Config
 
         cfg = Config()
         cfg.set_main_option("script_location", str(Path(__file__).resolve().parent / "migrations"))

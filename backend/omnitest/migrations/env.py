@@ -1,6 +1,6 @@
+from alembic import context
 from sqlalchemy import create_engine
 
-from alembic import context
 from omnitest.db import Base
 
 config = context.config

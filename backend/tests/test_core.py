@@ -3,11 +3,12 @@ import json
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
+
 from omnitest.core.assertions import AssertionEngine
 from omnitest.core.ir import Assertion, RunRequest, Step
 from omnitest.core.ir import TestIR as IR
 from omnitest.core.security import Redactor, check_url, contained, render
-from pydantic import ValidationError
 
 
 @pytest.mark.parametrize(

@@ -2,6 +2,7 @@ import asyncio
 import json
 
 import pytest
+
 from omnitest.core.ir import RunRequest
 from omnitest.core.ir import TestIR as IR
 from omnitest.demo import seed_demo
