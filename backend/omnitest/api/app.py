@@ -2,8 +2,10 @@
 
 import hmac
 import json
+import logging
 from contextlib import asynccontextmanager
 from dataclasses import asdict
+from importlib.metadata import entry_points
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -54,6 +56,14 @@ def create_app(settings=None):
 
     app = FastAPI(title="OmniTest", version="0.1.0", lifespan=lifespan)
     app.state.db, app.state.resources, app.state.orchestrator = db, resources, orchestrator
+    app.state.extensions = {}
+    for extension in entry_points(group="omnitest.extensions"):
+        try:
+            extension.load()(app, db, resources, orchestrator, settings)
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "Optional extension unavailable: %s", extension.name
+            )
 
     @app.middleware("http")
     async def boundary(request: Request, call_next):
@@ -90,7 +100,11 @@ def create_app(settings=None):
 
     @app.get("/api/health")
     def health():
-        return {"status": "ok", "ai_enabled": False, "version": "0.1.0"}
+        return {
+            "status": "ok",
+            "ai_enabled": app.state.extensions.get("ai", lambda: False)(),
+            "version": "0.1.0",
+        }
 
     @app.get("/api/adapters")
     def adapters():
@@ -103,9 +117,9 @@ def create_app(settings=None):
     def system_settings():
         return {
             "ai": {
-                "enabled": False,
+                "enabled": app.state.extensions.get("ai", lambda: False)(),
                 "providers": [],
-                "message": "Phase 1 does not load AI providers",
+                "message": "Manage optional providers at /api/ai",
             },
             "max_concurrency": settings.max_concurrency,
             "cli_programs": list(settings.cli_programs),

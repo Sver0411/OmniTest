@@ -2,14 +2,9 @@
 
 from typing import Protocol
 
-from omnitest.core.ir import TestIR
-
 
 class AIProvider(Protocol):
-    id: str
-
-    async def propose_cases(self, requirement: str, context: dict) -> list[TestIR]: ...
-    async def analyze_failure(self, report: dict) -> str: ...
+    async def complete(self, system: str, context: dict) -> dict: ...
 
 
 class AISettings:
