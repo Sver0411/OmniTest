@@ -187,4 +187,3 @@ docker compose up -d platform
 - [实际验收记录](docs/verification.md)
 
 MIT License。
-

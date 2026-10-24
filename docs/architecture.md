@@ -1,0 +1,90 @@
+# 架构与执行边界
+
+## 模块和依赖
+
+```mermaid
+flowchart TD
+  UI[React 管理界面] --> API[FastAPI]
+  CLI[CLI] --> API
+  CLI --> Services[资源与编排服务]
+  API --> Services
+  Services --> DB[SQLAlchemy / SQLite / Alembic]
+  Services --> Core[Runner / Test IR / Assertions]
+  Core --> Protocol[Adapter 协议与注册表]
+  Protocol --> HTTP[httpx API]
+  Protocol --> Web[Playwright Web]
+  Protocol --> Exec[受控 CLI 子进程]
+  Protocol --> Plugin[entry point 文件插件]
+  AI[未来可选 AI Provider] -.生成候选 IR.-> API
+```
+
+内核、服务和 API 不导入 AI。适配器不导入资源服务或 API。Test IR 不引用 HTTP、DOM、进程等具体技术对象；操作配置由适配器解释。测试对象由 Target.kind 表示，功能／回归等测试类型由 tags 和 metadata 表示，两者独立。
+
+目录：
+
+```text
+backend/omnitest/
+  core/             IR、断言、运行器、执行范围和脱敏
+  adapters/         协议、注册表及实际实现
+  services/         资源引用完整性、编排、持久化调度、工作目录锁
+  api/              管理 API、报告下载、SPA 托管
+  migrations/       打包随行的 Alembic 迁移
+  ai/               独立可选协议，Phase 1 不加载
+  config.py         管理员配置
+  db.py             ORM 模型与数据库初始化
+  cli.py            本地和 API 两种使用方式
+  demo.py           可复现的用例定义
+  demo_app.py       独立被测示例应用
+backend/tests/      自动化测试
+frontend/src/       React 管理应用
+examples/           CLI fixture 与文件 fixture
+scripts/            可重复验收入口
+docs/               产品和开发文档
+```
+
+## 存储设计
+
+`resources` 保存版本化 JSON 配置，并对 kind、project_id 建索引；Pydantic Schema 限定各资源格式，资源服务在单个事务内检查引用和项目归属。共享资源表避免为不断扩展的领域引入大量空表。`runs` 和 `case_results` 是独立的执行表，运行表关联结果使用外键。
+
+提交任务时复制用例、目标、环境和参数形成不可变快照；后续编辑用例不影响已提交任务。敏感环境值须使用引用，快照不解析密钥。表结构升级使用 Alembic，IR 的兼容性使用 schema_version。SQLite 启用 WAL、外键与 30 秒 busy timeout，数据库操作为短事务；网络和浏览器操作不会持有数据库事务。
+
+## 执行模型
+
+单进程 asyncio 执行器每 250ms 检查任务和定时配置。最多同时接纳 8 个运行，各运行遵循自身并发，全部实际用例还受全局 semaphore（4）限制。concurrency=1 即按定义顺序执行；参数矩阵按数据集顺序展开。
+
+状态：PENDING → RUNNING → PASSED／FAILED／ERROR／SKIPPED／CANCELLED。明确断言不满足是 FAILED；超时、配置拒绝、依赖缺失、网络或适配器故障是 ERROR。前置条件不满足为 SKIPPED。用例每次重试都保留日志、步骤输出、断言与证据，重试范围为 FAILED／ERROR；取消不重试。
+
+运行汇总优先级为 CANCELLED、ERROR、FAILED；所有用例跳过则为 SKIPPED，其余没有失败为 PASSED。通过率分母包含所有结果，包括跳过和取消。耗时是墙钟时间；各结果单独记录耗时。未得到终态的结果会转成 ERROR，不能被默认为通过。
+
+服务优雅停止时取消活动任务并清理适配器。服务崩溃后：RUNNING 标记 ERROR，并保留已完成结果；PENDING 正常恢复。中断任务不自动重放，避免重复写操作。数据库目录锁保证同一目录只有一个执行服务；本地 CLI 在服务运行时需用 `--url`。
+
+调度保存 interval_seconds 和 UTC epoch next_run。服务重启后到期配置合并触发一次，下一次设为当前时间加间隔，不追赶全部错过的时间点。任务持续时间可能超过间隔，因此可能产生排队；此版本没有按套件禁止重叠的策略。禁用调度不取消已提交任务。日期在前端按浏览器本地时区展示。
+
+## 适度安全隔离
+
+平台是可信操作者的本地工具，API Token 为单管理员权限，不是多租户隔离方案。默认绑定 127.0.0.1；非本地绑定必须开启认证。跨 Origin 请求拒绝，前端开发通过同源代理访问。远程部署还应在 HTTPS 和认证反向代理之后。
+
+- 网络目标须明确授权；管理员决定远程主机白名单，默认只认可 loopback IP 和 localhost，避免默认接受可变 DNS 名称。每次 HTTP 请求检查 origin，不自动跟随 redirect。Web 对资源请求执行同源策略、阻止下载和 service worker，禁用 WebSocket。
+- HTTP Body、进程输出、可读文件和步骤数有限额；用例和重试次数有上限。没有 OS 级 CPU／内存配额，也没有对恶意网页的完整网络沙箱。
+- CLI 使用 create_subprocess_exec，无 shell；可执行程序和前缀参数仅来自管理员配置，每个参数逐项 fullmatch。工作目录固定到本次运行的证据目录；用户不能选择 executable 或 cwd。Unix 超时和取消会终止进程组，Windows 终止直接子进程。Phase 1 仅支持不会创建脱离子进程的可信程序；运行未知程序应使用容器或未来的独立 worker。
+- 文件插件限定管理员 file_root，resolve 后检查相对路径；证据只能通过结果 manifest 中的相对路径下载，禁用任意目录浏览。
+- 日志、报告和文本证据对已配置 `OMNITEST_SECRET_*` 的值脱敏，并遮蔽常见敏感字段及 Bearer token；截图遮蔽密码输入、被秘密值填充的输入和目标 mask_selectors。未知业务敏感字段应通过 mask_selectors 配置，截图不保证自动识别页面所有隐私文本。
+- HTTP 写操作单独要求 allow_mutations；CLI profile 注册即属于管理员对该可信程序的执行授权。压力／安全／破坏性操作不在 Phase 1 支持范围，不能通过任意 shell 或 AI 输出绕过执行白名单。
+
+管理员 CLI profile 示例：
+
+```json
+{
+  "allowed_hosts": ["staging.example.com"],
+  "file_root": "/srv/fixtures",
+  "cli_programs": {
+    "version-check": {
+      "argv": ["/usr/local/bin/my-safe-tool", "inspect"],
+      "arguments": ["version|health"],
+      "min_args": 1
+    }
+  }
+}
+```
+
+不要给 Python、Shell 等解释器配置可执行任意代码的自由参数。内置 demo-tool 是解释器加固定项目脚本，脚本自身也有受限命令集。

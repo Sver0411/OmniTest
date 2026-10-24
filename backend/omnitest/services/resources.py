@@ -1,0 +1,113 @@
+"""Resource validation and project-scoped reference integrity."""
+
+import time
+
+from sqlalchemy import select
+
+from omnitest.core.ir import Environment, Project, Schedule, Suite, Target, TestIR
+from omnitest.db import Resource
+
+SCHEMAS = {
+    "projects": Project,
+    "targets": Target,
+    "cases": TestIR,
+    "suites": Suite,
+    "environments": Environment,
+    "schedules": Schedule,
+}
+
+
+def resource_dict(row):
+    return {
+        "id": row.id,
+        "kind": row.kind,
+        "project_id": row.project_id,
+        "body": row.body,
+        "created_at": row.created_at,
+        "updated_at": row.updated_at,
+    }
+
+
+class Resources:
+    def __init__(self, db, registry):
+        self.db = db
+        self.registry = registry
+
+    def get(self, kind, identity, session=None):
+        if session is None:
+            with self.db.session() as s:
+                return self.get(kind, identity, s)
+        row = session.get(Resource, identity)
+        if not row or row.kind != kind:
+            raise LookupError(f"{kind} not found: {identity}")
+        return row
+
+    def list(self, kind, project_id=None):
+        with self.db.session() as s:
+            stmt = select(Resource).where(Resource.kind == kind).order_by(Resource.created_at)
+            if project_id:
+                stmt = stmt.where(Resource.project_id == project_id)
+            return [resource_dict(r) for r in s.scalars(stmt)]
+
+    def same_project(self, kind, identity, project_id, session):
+        row = self.get(kind, identity, session)
+        if row.project_id != project_id:
+            raise ValueError("Cross-project reference is not allowed")
+        return row
+
+    def save(self, kind, body, project_id=None, identity=None, session=None):
+        if session is None:
+            with self.db.session.begin() as s:
+                return self.save(kind, body, project_id, identity, session=s)
+        if kind not in SCHEMAS:
+            raise LookupError("Unknown resource kind")
+        body = SCHEMAS[kind].model_validate(body).model_dump(mode="json")
+        s = session
+        if kind != "projects":
+            self.get("projects", project_id, s)
+        else:
+            project_id = None
+        if kind == "cases":
+            target = self.same_project("targets", body["target"], project_id, s)
+            adapter = self.registry.create(body["adapter"])
+            if target.body["kind"] not in adapter.info.target_kinds:
+                raise ValueError("Adapter does not support this target kind")
+        elif kind == "suites":
+            for case_id in body["case_ids"]:
+                self.same_project("cases", case_id, project_id, s)
+        elif kind == "schedules":
+            self.same_project("suites", body["suite_id"], project_id, s)
+            if body["environment_id"]:
+                self.same_project("environments", body["environment_id"], project_id, s)
+            if body["next_run"] is None:
+                body["next_run"] = time.time() + body["interval_seconds"]
+        if identity:
+            row = self.get(kind, identity, s)
+            if row.project_id != project_id:
+                raise ValueError("Project membership is immutable")
+            if kind == "targets" and row.body["kind"] != body["kind"]:
+                raise ValueError("Target kind is immutable; create a new target")
+            row.body, row.updated_at = body, time.time()
+        else:
+            row = Resource(kind=kind, project_id=project_id, body=body)
+            s.add(row)
+        s.flush()
+        if kind == "cases":
+            row.body = {**body, "id": row.id}
+        return resource_dict(row)
+
+    def delete(self, kind, identity):
+        with self.db.session.begin() as s:
+            row = self.get(kind, identity, s)
+            for other in s.scalars(select(Resource)):
+                body = other.body
+                linked = (
+                    other.project_id == identity
+                    or body.get("target") == identity
+                    or identity in body.get("case_ids", [])
+                    or body.get("suite_id") == identity
+                    or body.get("environment_id") == identity
+                )
+                if linked:
+                    raise ValueError(f"Resource is referenced by {other.kind}: {body.get('name')}")
+            s.delete(row)
