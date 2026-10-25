@@ -42,6 +42,10 @@ def create_app(settings=None):
     resources = Resources(db, registry)
     orchestrator = Orchestrator(db, resources, settings, registry)
     access = AccessControl(settings, db)
+    if set(orchestrator.nodes.tokens.values()).intersection(
+        token for token, _ in access.credentials
+    ):
+        raise ValueError("Node credentials must be separate from management API credentials")
     worker_lock = WorkerLock(settings.data_dir)
 
     @asynccontextmanager
@@ -59,6 +63,9 @@ def create_app(settings=None):
     app = FastAPI(title="OmniTest", version=__version__, lifespan=lifespan)
     app.state.db, app.state.resources, app.state.orchestrator = db, resources, orchestrator
     app.state.extensions = {}
+    from omnitest.services.nodes import mount
+
+    mount(app, orchestrator.nodes, orchestrator)
     for extension in entry_points(group="omnitest.extensions"):
         try:
             extension.load()(app, db, resources, orchestrator, settings)
@@ -89,6 +96,10 @@ def create_app(settings=None):
             401,
             403,
         }
+        if response.status_code < 400 and (
+            request.url.path == "/api/worker/claim" or request.url.path.endswith("/heartbeat")
+        ):
+            audited = False
         if request.url.path.startswith("/api/") and audited:
             actor = request.state.principal
             try:
@@ -136,7 +147,12 @@ def create_app(settings=None):
             "/api/health",
             "/api/ready",
         }:
-            principal = access.authenticate(request.headers.get("authorization", ""))
+            worker_request = request.url.path.startswith("/api/worker/")
+            principal = (
+                orchestrator.nodes.authenticate(request.headers.get("authorization", ""))
+                if worker_request
+                else access.authenticate(request.headers.get("authorization", ""))
+            )
             request.state.principal = principal
             if request.method in {"POST", "PUT", "PATCH"}:
                 data = await request.body()
@@ -154,9 +170,12 @@ def create_app(settings=None):
                     request.state.project_id = access.project_for(Run, parts[2])
                 elif len(parts) == 4 and parts[1] == "resources" and parts[2] in SCHEMAS:
                     request.state.project_id = access.project_for(Resource, parts[3], parts[2])
+                elif len(parts) >= 5 and parts[1:3] == ["worker", "runs"]:
+                    request.state.project_id = access.project_for(Run, parts[3])
             except HTTPException:
                 pass
-            await access.authorize(request, principal)
+            if not worker_request:
+                await access.authorize(request, principal)
         return await call_next(request)
 
     @app.exception_handler(LookupError)

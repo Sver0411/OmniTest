@@ -8,21 +8,25 @@ from sqlalchemy import select
 
 from omnitest.core.ir import RunRequest, uid
 from omnitest.core.runner import Runner
-from omnitest.db import CaseResult, Resource, Run
+from omnitest.db import CaseResult, NodeLease, Resource, Run
+from omnitest.services.nodes import NodeService
 
 
 def run_dict(row):
     return {
-        k: getattr(row, k)
-        for k in [
-            "id",
-            "project_id",
-            "status",
-            "created_at",
-            "started_at",
-            "finished_at",
-            "summary",
-        ]
+        "node_id": row.snapshot.get("node_id"),
+        **{
+            k: getattr(row, k)
+            for k in [
+                "id",
+                "project_id",
+                "status",
+                "created_at",
+                "started_at",
+                "finished_at",
+                "summary",
+            ]
+        },
     }
 
 
@@ -37,6 +41,8 @@ class Orchestrator:
     def __init__(self, db, resources, settings, registry):
         self.db, self.resources, self.settings = db, resources, settings
         self.runner = Runner(settings, registry)
+        self.nodes = NodeService(db, settings)
+        resources.nodes = self.nodes
         self.semaphore = asyncio.Semaphore(settings.max_concurrency)
         self.active = {}
         self.loop_task = None
@@ -80,15 +86,25 @@ class Orchestrator:
                 )
         if len(cases) > 500:
             raise ValueError("A run may contain at most 500 parameterized cases")
+        if request.node_id:
+            self.nodes.validate_assignment(request.node_id, request.project_id, cases)
         run = Run(
             id=uid(),
             project_id=request.project_id,
             status="PENDING",
-            snapshot={"cases": cases, "concurrency": concurrency, "source": source, "actor": actor},
+            snapshot={
+                "cases": cases,
+                "concurrency": concurrency,
+                "source": source,
+                "actor": actor,
+                "node_id": request.node_id,
+            },
             summary={},
         )
         s.add(run)
         s.flush()
+        if request.node_id:
+            s.add(NodeLease(run_id=run.id, node_id=request.node_id))
         for item in cases:
             result = CaseResult(
                 id=item["result_id"],
@@ -129,12 +145,13 @@ class Orchestrator:
     async def poll(self):
         while True:
             try:
+                self.nodes.expire()
                 self.tick_schedules()
                 with self.db.session() as s:
                     pending = list(
                         s.scalars(
                             select(Run)
-                            .where(Run.status == "PENDING")
+                            .where(Run.status == "PENDING", ~Run.id.in_(select(NodeLease.run_id)))
                             .order_by(Run.created_at)
                             .limit(8)
                         )
@@ -156,22 +173,35 @@ class Orchestrator:
             for schedule in s.scalars(select(Resource).where(Resource.kind == "schedules")):
                 cfg = schedule.body
                 if cfg["enabled"] and cfg["next_run"] <= now:
-                    self.submit(
-                        RunRequest(
-                            project_id=schedule.project_id,
-                            suite_id=cfg["suite_id"],
-                            environment_id=cfg.get("environment_id"),
-                        ),
-                        source=f"schedule:{schedule.id}",
-                        session=s,
-                    )
-                    schedule.body = {**cfg, "next_run": now + cfg["interval_seconds"]}
+                    try:
+                        with s.begin_nested():
+                            self.submit(
+                                RunRequest(
+                                    project_id=schedule.project_id,
+                                    suite_id=cfg["suite_id"],
+                                    environment_id=cfg.get("environment_id"),
+                                    node_id=cfg.get("node_id"),
+                                ),
+                                source=f"schedule:{schedule.id}",
+                                session=s,
+                            )
+                        schedule.body = {**cfg, "next_run": now + cfg["interval_seconds"]}
+                    except (ValueError, LookupError) as exc:
+                        from omnitest.core.security import Redactor
+
+                        schedule.body = {
+                            **cfg,
+                            "enabled": False,
+                            "last_error": Redactor().clean(str(exc))[:2000],
+                        }
 
     async def execute(self, run_id):
         with self.db.session.begin() as s:
             run = s.get(Run, run_id)
             if run.status != "PENDING":
                 return
+            if run.snapshot.get("node_id"):
+                raise ValueError("Remote runs must be claimed by their assigned execution node")
             run.status, run.started_at = "RUNNING", time.time()
             snapshot = run.snapshot
         local = asyncio.Semaphore(snapshot["concurrency"])
@@ -224,11 +254,16 @@ class Orchestrator:
         with self.db.session.begin() as s:
             run = s.get(Run, run_id)
             rows = list(s.scalars(select(CaseResult).where(CaseResult.run_id == run_id)))
+            lease = s.get(NodeLease, run_id)
             for row in rows:
                 if row.status in {"PENDING", "RUNNING"}:
                     row.status, row.detail = (
-                        "ERROR",
-                        {"error": "Execution ended without a final result"},
+                        "CANCELLED" if lease and lease.cancel_requested else "ERROR",
+                        {
+                            "error": "Execution cancelled"
+                            if lease and lease.cancel_requested
+                            else "Execution ended without a final result"
+                        },
                     )
             counts = dict(Counter(r.status for r in rows))
             run.summary = {
@@ -237,14 +272,18 @@ class Orchestrator:
                 "pass_rate": counts.get("PASSED", 0) / len(rows) if rows else 0,
                 "duration": time.time() - (run.started_at or run.created_at),
             }
-            run.status = next(
-                (status for status in ["CANCELLED", "ERROR", "FAILED"] if counts.get(status)),
-                "SKIPPED" if counts.get("SKIPPED") == len(rows) else "PASSED",
+            run.status = (
+                "CANCELLED"
+                if lease and lease.cancel_requested
+                else next(
+                    (status for status in ["CANCELLED", "ERROR", "FAILED"] if counts.get(status)),
+                    "SKIPPED" if counts.get("SKIPPED") == len(rows) else "PASSED",
+                )
             )
             run.finished_at = time.time()
 
     def cancel(self, run_id):
-        with self.db.session.begin() as s:
+        with self.nodes.lock, self.db.session.begin() as s:
             run = s.get(Run, run_id)
             if not run:
                 raise LookupError("Run not found")
@@ -254,6 +293,8 @@ class Orchestrator:
                     result.status = "CANCELLED"
             elif run.status == "RUNNING" and run_id in self.active:
                 self.active[run_id].cancel()
+            elif run.status == "RUNNING" and (lease := s.get(NodeLease, run_id)):
+                lease.cancel_requested = True
         if run.status == "CANCELLED":
             self.finalize(run_id)
 
@@ -268,6 +309,9 @@ class Orchestrator:
                 **run_dict(run),
                 "source": run.snapshot["source"],
                 "submitted_by": run.snapshot.get("actor"),
+                "cancel_requested": bool(
+                    (lease := s.get(NodeLease, run_id)) and lease.cancel_requested
+                ),
                 "results": [
                     result_dict(r)
                     for r in sorted(rows, key=lambda r: positions.get(r.id, len(positions)))

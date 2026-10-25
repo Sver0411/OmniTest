@@ -9,15 +9,18 @@ export default function Operations({ api, onError }: Props) {
   const [state, setState] = useState<any>(null);
   const [events, setEvents] = useState<any[]>([]);
   const [busy, setBusy] = useState(false);
+  const [nodes, setNodes] = useState<any[]>([]);
   async function refresh() {
     setBusy(true);
     try {
-      const [operations, audit] = await Promise.all([
+      const [operations, audit, nextNodes] = await Promise.all([
         api("/operations"),
         api("/audit?limit=50"),
+        api("/nodes"),
       ]);
       setState(operations);
       setEvents(audit);
+      setNodes(nextNodes);
     } catch (error) {
       onError(String(error));
     } finally {
@@ -40,7 +43,7 @@ export default function Operations({ api, onError }: Props) {
           <dl>
             <dt>平台版本</dt>
             <dd>{state.version}</dd>
-            <dt>活动任务</dt>
+            <dt>本机活动任务</dt>
             <dd>{state.worker.active_runs}</dd>
             <dt>等待执行</dt>
             <dd>{state.runs.PENDING || 0}</dd>
@@ -50,7 +53,7 @@ export default function Operations({ api, onError }: Props) {
                 ? "—"
                 : state.oldest_pending_seconds.toFixed(1) + " 秒"}
             </dd>
-            <dt>执行并发上限</dt>
+            <dt>本机用例并发上限</dt>
             <dd>{state.worker.max_concurrency}</dd>
             <dt>审计记录数</dt>
             <dd>{state.audit_events}</dd>
@@ -58,6 +61,62 @@ export default function Operations({ api, onError }: Props) {
             <dd>{state.plugin_errors.length}</dd>
           </dl>
         )}
+      </section>
+      <section className="panel">
+        <div className="panel-heading">
+          <h2>远程执行节点</h2>
+        </div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>节点</th>
+                <th>状态</th>
+                <th>系统 / 版本</th>
+                <th>已安装适配器</th>
+                <th>当前任务</th>
+                <th>最近连接</th>
+              </tr>
+            </thead>
+            <tbody>
+              {nodes.map((node) => (
+                <tr key={node.id}>
+                  <td>{node.id}</td>
+                  <td>
+                    {
+                      (
+                        {
+                          online: "在线",
+                          offline: "离线",
+                          disabled: "已停用",
+                        } as Record<string, string>
+                      )[node.status]
+                    }
+                  </td>
+                  <td>
+                    {node.inventory
+                      ? `${node.inventory.os} / ${node.inventory.version}`
+                      : "—"}
+                  </td>
+                  <td>
+                    {node.inventory
+                      ? Object.keys(node.inventory.adapters).join(", ")
+                      : "—"}
+                  </td>
+                  <td title={node.active_run}>
+                    {node.active_run?.slice(0, 8) || "—"}
+                  </td>
+                  <td>
+                    {node.last_seen
+                      ? new Date(node.last_seen * 1000).toLocaleString("zh-CN")
+                      : "尚未连接"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {!nodes.length && <div className="empty">尚未配置远程节点</div>}
       </section>
       <section className="panel">
         <div className="panel-heading">

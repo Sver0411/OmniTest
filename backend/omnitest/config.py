@@ -28,6 +28,7 @@ class Settings:
     plugins: bool = True
     access_tokens: list[dict] = field(default_factory=list)
     project_secrets: dict[str, list[str]] = field(default_factory=dict)
+    remote_nodes: list[dict] = field(default_factory=list)
 
     def __post_init__(self):
         self.data_dir = Path(self.data_dir).resolve()
@@ -45,6 +46,7 @@ class Settings:
             self.http_faults = value.get("http_faults", {})
             self.access_tokens = value.get("access_tokens", self.access_tokens)
             self.project_secrets = value.get("project_secrets", self.project_secrets)
+            self.remote_nodes = value.get("remote_nodes", self.remote_nodes)
             self.allowed_hosts.update(value.get("allowed_hosts", []))
             self.file_root = Path(value.get("file_root", self.file_root)).resolve()
             self.database_root = Path(value.get("database_root", self.database_root)).resolve()
@@ -61,6 +63,8 @@ class Settings:
             for project, names in self.project_secrets.items()
         ):
             raise ValueError("project_secrets must map project IDs to OMNITEST_SECRET_ name lists")
+        if self.remote_nodes and not self.authentication:
+            raise ValueError("Remote execution nodes require management API credentials")
         tool = Path("examples/tool.py").resolve()
         if tool.is_file():
             self.cli_programs.setdefault(

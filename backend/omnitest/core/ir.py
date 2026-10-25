@@ -96,6 +96,8 @@ class Schedule(Model):
     interval_seconds: int = Field(ge=5, le=31536000)
     enabled: bool = True
     next_run: float | None = None
+    node_id: str | None = Field(default=None, pattern=r"^[a-zA-Z0-9_-]{1,80}$")
+    last_error: str | None = Field(default=None, max_length=2000)
 
 
 class RunRequest(Model):
@@ -105,6 +107,7 @@ class RunRequest(Model):
     environment_id: str | None = None
     concurrency: int = Field(default=1, ge=1, le=8)
     parameters: dict[str, Any] = Field(default_factory=dict)
+    node_id: str | None = Field(default=None, pattern=r"^[a-zA-Z0-9_-]{1,80}$")
 
     @model_validator(mode="after")
     def selection(self):

@@ -2,7 +2,7 @@
 
 import time
 
-from sqlalchemy import JSON, Float, ForeignKey, String, create_engine, event
+from sqlalchemy import JSON, Boolean, Float, ForeignKey, String, create_engine, event
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 from .core.ir import uid
@@ -58,6 +58,24 @@ class AuditEvent(Base):
     status_code: Mapped[int] = mapped_column()
     request_id: Mapped[str] = mapped_column(String)
     duration_ms: Mapped[float] = mapped_column(Float)
+
+
+class NodeState(Base):
+    __tablename__ = "node_states"
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    last_seen: Mapped[float] = mapped_column(Float)
+    inventory: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class NodeLease(Base):
+    __tablename__ = "node_leases"
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id", ondelete="CASCADE"), primary_key=True)
+    node_id: Mapped[str] = mapped_column(String, index=True)
+    claim_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    heartbeat_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False)
+    evidence_bytes: Mapped[int] = mapped_column(default=0)
+    evidence_count: Mapped[int] = mapped_column(default=0)
 
 
 class Database:

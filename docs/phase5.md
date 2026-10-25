@@ -1,6 +1,6 @@
 # 第五阶段：平台工程化（v0.2.0）
 
-本次增量提供项目级凭据权限、请求审计、运行状态、离线备份恢复、公开适配器 SDK 和完整 wheel 发布包。继续使用一个 SQLite 数据目录、一个调度器和本机执行器。多执行节点、分布式队列、SSO、团队成员数据库和进程配额尚未实现。
+本次增量提供项目级凭据权限、请求审计、运行状态、离线备份恢复、公开适配器 SDK 和完整 wheel 发布包。本节记录 v0.2.0 首批工程化能力。v0.3.0 在单协调服务基础上增加固定节点远程执行，见 [远程执行节点](remote-execution.md)。多主协调、分布式队列、SSO、团队成员数据库和进程配额尚未实现。
 
 ## 共享访问与项目权限
 
@@ -113,13 +113,13 @@ npm --prefix frontend ci
 npm --prefix frontend run build
 $env:OMNITEST_REQUIRE_UI = '1'
 python -m build --wheel
-python scripts/verify_wheel.py dist/omnitest-0.2.0-py3-none-any.whl
+python scripts/verify_wheel.py dist/omnitest-0.3.0-py3-none-any.whl
 ```
 
 构建时将已生成的 SPA 放入 wheel，包含后端、迁移、SDK、插件入口及界面资源，排除开发测试包。`OMNITEST_REQUIRE_UI=1` 可防止发布缺少界面的包。源码开发仍优先使用项目的 `frontend/dist`，安装后的服务在源码目录之外使用包内静态资源。
 
 ```powershell
-python -m pip install "dist/omnitest-0.2.0-py3-none-any.whl[grpc]"
+python -m pip install "dist/omnitest-0.3.0-py3-none-any.whl[grpc]"
 omnitest --data-dir PATH_TO_DATA init
 omnitest --data-dir PATH_TO_DATA serve
 ```

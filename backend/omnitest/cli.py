@@ -29,6 +29,10 @@ def main():
     serve = sub.add_parser("serve")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8000)
+    worker = sub.add_parser("worker")
+    worker.add_argument("--coordinator", required=True)
+    worker.add_argument("--token-env", default="OMNITEST_NODE_TOKEN")
+    worker.add_argument("--once", action="store_true", help="Exit after processing one assignment")
     demo = sub.add_parser("seed-demo")
     demo.add_argument("--base-url", default="http://127.0.0.1:8765")
     phase2 = sub.add_parser("seed-phase2")
@@ -45,6 +49,7 @@ def main():
     choice.add_argument("--suite")
     choice.add_argument("--case", action="append")
     run.add_argument("--environment")
+    run.add_argument("--node", help="Execution node ID (requires --url)")
     listing = sub.add_parser("list")
     listing.add_argument(
         "kind", choices=["projects", "targets", "cases", "suites", "environments", "schedules"]
@@ -72,6 +77,15 @@ def main():
         emit(Registry().inventory())
         return
     settings = Settings(data_dir=Path(args.data_dir))
+    if args.command == "worker":
+        from omnitest.worker import run_worker
+
+        if args.url:
+            parser.error("Use worker --coordinator instead of --url")
+        run_worker(settings, args.coordinator, args.token_env, args.once)
+        return
+    if args.command == "run" and args.node and not args.url:
+        parser.error("Remote node execution requires --url")
     if args.command == "serve":
         if args.host not in {"127.0.0.1", "localhost", "::1"} and not settings.authentication:
             parser.error("Non-loopback binding requires configured API credentials")
@@ -145,7 +159,9 @@ async def local(args, settings):
 
 async def remote(args, settings):
     headers = {"Authorization": f"Bearer {settings.api_token}"} if settings.api_token else {}
-    async with httpx.AsyncClient(base_url=args.url, headers=headers, timeout=30) as client:
+    async with httpx.AsyncClient(
+        base_url=args.url, headers=headers, timeout=30, trust_env=False
+    ) as client:
         if args.command == "list":
             response = await client.get(
                 f"/api/resources/{args.kind}",
@@ -163,6 +179,7 @@ async def remote(args, settings):
                     "suite_id": args.suite,
                     "case_ids": args.case or [],
                     "environment_id": args.environment,
+                    "node_id": args.node,
                 },
             )
             response.raise_for_status()

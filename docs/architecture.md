@@ -50,7 +50,7 @@ docs/               产品和开发文档
 
 ## 执行模型
 
-单进程 asyncio 执行器每 250ms 检查任务和定时配置。最多同时接纳 8 个运行，各运行遵循自身并发，全部实际用例还受全局 semaphore（4）限制。concurrency=1 即按定义顺序执行；参数矩阵按数据集顺序展开。
+本机队列由单进程 asyncio 执行器每 250ms 检查任务和定时配置。最多同时接纳 8 个运行，各运行遵循自身并发，全部实际用例还受全局 semaphore（4）限制。concurrency=1 即按定义顺序执行；参数矩阵按数据集顺序展开。
 
 状态：PENDING → RUNNING → PASSED／FAILED／ERROR／SKIPPED／CANCELLED。明确断言不满足是 FAILED；超时、配置拒绝、依赖缺失、网络或适配器故障是 ERROR。前置条件不满足为 SKIPPED。用例每次重试都保留日志、步骤输出、断言与证据，重试范围为 FAILED／ERROR；取消不重试。
 
@@ -98,3 +98,9 @@ docs/               产品和开发文档
 离线备份在 worker lock 下使用 SQLite backup API 并归档默认证据与 fixture。恢复校验通过后才安装到新目录。正式 wheel 包含 SPA、迁移和公开 SDK，在源码外运行时从包内提供界面。运行维护提供实际队列、审计和加载错误，仍只有一个本地调度器；没有伪造分布式节点。
 
 完整配置与边界见 [Phase 5](phase5.md)。
+
+## 远程执行节点
+
+v0.3.0 为 Orchestrator 增加独立 NodeService，使用 node_states / node_leases 持久化节点状态和运行租约。管理端提交时校验项目和适配器范围，固定选择本机或节点，任务快照记录 node_id；本机 poll 不领取远程任务。worker 通过独立节点凭据调用 /api/worker 领取、续约、上传证据和提交单用例结果。复用相同 Runner / Adapter 协议，不将 HTTP、浏览器或设备逻辑放进协调器。
+
+当前单进程协调服务持有 SQLite 目录锁，线程锁串行化租约领取与取消／完成；不共享 SQLite 至执行节点。租约失效或服务重启结束已领取任务且不重放，旧结果由 claim_id 与终态检查拒绝。远程测试凭据取协调服务与节点 project_secrets 交集。完整运行步骤、传输额度及限制见 [远程执行](remote-execution.md)。

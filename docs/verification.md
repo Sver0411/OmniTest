@@ -86,3 +86,14 @@ iOS / macOS 缺少 Apple 主机与设备，只有连接协议实现，未完成�
 - 当前本地工作台升级前已归档原数据库与证据；v0.2.0 `/api/ready` 返回 ready，已有历史保留。本机仍为原有本地管理员模式，没有自动启用共享身份或向用户暴露临时演练令牌。
 
 新的 CI 同时覆盖 Ubuntu 与 Windows，并构建、验证和上传 wheel。这里的本地结果不代表分布式执行、SSO、OS 沙箱或新增 Apple 设备验收；这些能力仍在后续范围。
+
+## 2026-10-25 远程执行节点 v0.3.0
+
+- 后端完整回归 **129 passed**，JUnit 在 `data/nodes-tests.xml`，仍有 1 条既有 Starlette/httpx 测试集成弃用提示；Ruff、前端格式、TypeScript 与生产构建通过。新增并发领取、凭据隔离、节点范围、租约过期、重复结果、证据路径／校验／额度、节点撤销、调度隔离、双侧测试凭据授权及迁移／重启测试。
+- 独立节点端到端：一个协调服务、一个独立被测服务与两个 worker 进程，使用不同令牌和目录。alpha 实际执行 HTTP + Chromium 截图 **2 PASSED**，beta 执行只有自身文件根目录提供的文件检查 **1 PASSED**。CLI 选择远程节点 **1 PASSED**，通过 Web 选择节点再运行 **2 PASSED**；0 页面脚本错误。摘要 `data/nodes/summary.json`，截图 `execution.png` / `operations.png`。
+- 节点本地测试凭据成功执行并脱敏；未授权引用预期 ERROR。取消预期 CANCELLED。终止 worker 后平台等待 30 秒租约过期，记录 ERROR 且不重放；重新连接可执行新任务。协调服务重启使已领取任务预期 ERROR，既有通过记录与 PNG 保留，重启后新任务 PASSED。
+- 本机核心回归：两次 CLI 各 **22 PASSED**，Web **22 PASSED**；预期诊断 1 FAILED + 1 ERROR，调度重启、文件插件、用例创建／复制／删除、深浅主题和 1440 / 820 宽度通过，见 `data/nodes-regression-core/summary.json`。
+- 权限与恢复回归：角色界面、项目与证据隔离、身份切换、审计，以及离线恢复后历史与 PNG 检查通过，API / Web 各 **2 PASSED**，见 `data/nodes-regression-access/summary.json`。
+- wheel：构建 `omnitest-0.3.0-py3-none-any.whl`，全新虚拟环境在源码目录外安装，包内界面、迁移、实际 HTTP **1 PASSED** 和独立 SDK 插件通过，见 `data/nodes/wheel-summary.json`。
+
+本地两节点验证发生在同一 Windows 主机的独立进程中，不代表跨物理机网络、HTTPS 代理证书、SSO、多主协调或 Apple 设备实测。CI 同时为 Ubuntu / Windows 配置上述节点脚本及现有各阶段验收，远程结果以对应提交的 Actions 记录为准。

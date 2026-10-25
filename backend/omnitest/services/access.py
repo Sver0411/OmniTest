@@ -117,7 +117,13 @@ class AccessControl:
         project = request.query_params.get("project_id")
         if project:
             principal.check_project(project)
-        if read and path in {"/api/session", "/api/settings", "/api/adapters", "/api/dashboard"}:
+        if read and path in {
+            "/api/session",
+            "/api/settings",
+            "/api/adapters",
+            "/api/dashboard",
+            "/api/nodes",
+        }:
             return
         if path == "/api/cases/import":
             if not principal.manage:

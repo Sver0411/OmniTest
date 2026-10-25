@@ -44,6 +44,8 @@ type Run = {
   finished_at?: number;
   summary: any;
   results?: any[];
+  node_id?: string | null;
+  cancel_requested?: boolean;
 };
 const names: Record<string, string> = {
   dashboard: "工作台",
@@ -162,6 +164,8 @@ function App() {
   const [environment, setEnvironment] = useState("");
   const [environments, setEnvironments] = useState<Resource[]>([]);
   const [concurrency, setConcurrency] = useState(1);
+  const [nodes, setNodes] = useState<any[]>([]);
+  const [node, setNode] = useState("");
   const [token, setToken] = useState(
     sessionStorage.getItem("omnitest-token") || "",
   );
@@ -177,6 +181,8 @@ function App() {
     setCaseOptions([]);
     setSuiteOptions([]);
     setEnvironments([]);
+    setNodes([]);
+    setNode("");
     setReport(null);
     setEditor(null);
     setProject("");
@@ -226,7 +232,7 @@ function App() {
         "environments",
         "projects",
       ].includes(page);
-      const [ps, ds, ss, ads, nextRuns, nextRows, projectResources] =
+      const [ps, ds, ss, ads, nextRuns, nextRows, projectResources, nextNodes] =
         await Promise.all([
           api("/resources/projects"),
           api("/dashboard" + query),
@@ -245,6 +251,7 @@ function App() {
                 ),
               )
             : Promise.resolve([[], [], [], []]),
+          project ? api("/nodes" + query) : Promise.resolve([]),
         ]);
       if (version !== refreshVersion.current) return;
       setProjects(ps);
@@ -253,6 +260,7 @@ function App() {
       setAdapters(ads.items);
       setRuns(nextRuns);
       setRows(nextRows);
+      setNodes(nextNodes);
       const [ts, es, suites, cases] = projectResources;
       setTargets(ts);
       setEnvironments(es);
@@ -273,6 +281,7 @@ function App() {
   useEffect(() => {
     setSelected([]);
     setEnvironment("");
+    setNode("");
     refresh();
   }, [page, project, filterAdapter, filterSince, filterUntil, credentialEpoch]);
   useEffect(() => {
@@ -348,6 +357,7 @@ function App() {
           name: "定时回归",
           suite_id: suiteOptions[0]?.id || "",
           environment_id: null,
+          node_id: null,
           interval_seconds: 3600,
           enabled: true,
         };
@@ -397,6 +407,7 @@ function App() {
       body: pretty({
         project_id: project,
         environment_id: environment || null,
+        node_id: node || null,
         ...payload,
       }),
     });
@@ -434,6 +445,7 @@ function App() {
             <tr>
               <th>执行任务</th>
               <th>状态</th>
+              <th>执行节点</th>
               <th>通过 / 总数</th>
               <th>开始时间</th>
               <th>耗时</th>
@@ -463,6 +475,7 @@ function App() {
                 <td>
                   <Badge status={r.status} />
                 </td>
+                <td>{r.node_id || "本机"}</td>
                 <td>
                   <strong>
                     {r.summary.total !== undefined
@@ -843,7 +856,14 @@ function App() {
                                     <small>
                                       每 {row.body.interval_seconds}s · 下次{" "}
                                       {date(row.body.next_run)}
+                                      {" · "}
+                                      {row.body.node_id || "本机"}
                                     </small>
+                                    {row.body.last_error && (
+                                      <small className="error-text">
+                                        {row.body.last_error}
+                                      </small>
+                                    )}
                                   </>
                                 ) : page === "targets" ? (
                                   <>
@@ -968,6 +988,26 @@ function App() {
                     ) : (
                       <>
                         <div className="execution-options">
+                          <label>
+                            执行节点
+                            <select
+                              aria-label="执行节点"
+                              value={node}
+                              onChange={(e) => setNode(e.target.value)}
+                            >
+                              <option value="">本机</option>
+                              {nodes
+                                .filter((n) => n.enabled)
+                                .map((n) => (
+                                  <option key={n.id} value={n.id}>
+                                    {n.id} ·{" "}
+                                    {n.status === "online"
+                                      ? "在线"
+                                      : "离线，等待连接"}
+                                  </option>
+                                ))}
+                            </select>
+                          </label>
                           <label>
                             执行环境
                             <select
@@ -1313,7 +1353,8 @@ function App() {
                 </h2>
                 <p>
                   {date(report.created_at)} ·{" "}
-                  {report.summary.duration?.toFixed(2) || "—"}s
+                  {report.summary.duration?.toFixed(2) || "—"}s{" · "}
+                  {report.node_id || "本机"}
                 </p>
               </div>
               <button aria-label="关闭报告" onClick={() => setReport(null)}>
@@ -1328,6 +1369,7 @@ function App() {
               <div className="spacer" />
               {!terminal(report.status) && permissions.execute && (
                 <button
+                  disabled={report.cancel_requested}
                   onClick={() =>
                     act(async () =>
                       setReport(
@@ -1339,7 +1381,7 @@ function App() {
                   }
                 >
                   <X size={14} />
-                  取消任务
+                  {report.cancel_requested ? "正在取消…" : "取消任务"}
                 </button>
               )}
               {["json", "junit"].map((f) => (

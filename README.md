@@ -17,6 +17,7 @@ Python 执行内核、FastAPI 管理 API、React 管理界面和独立 CLI。真
 - **测试管理**：项目、授权目标、用例、套件、环境和持久化定时任务。
 - **执行与报告**：并发限制、超时、重试、取消、历史记录、截图与文件证据、JSON / JUnit 导出。
 - **多种使用入口**：Web 管理界面、CLI 和 REST API。
+- **远程执行**：独立 worker 主动领取固定节点任务、心跳租约、取消、报告与证据回传。
 - **共享与运维**：项目范围的管理员／编辑者／执行者／只读凭据、操作审计、就绪检查、运行维护、离线备份恢复。
 - **安装与扩展**：包含界面与迁移的 wheel、公开适配器 SDK、插件 API 版本检查与安装包清单。
 - **AI 可选**：自动化核心不依赖 AI；支持可选 Provider、用例生成、失败分析、覆盖与修复建议、报告总结。
@@ -25,12 +26,12 @@ Python 执行内核、FastAPI 管理 API、React 管理界面和独立 CLI。真
 
 ![OmniTest 工作台](docs/images/dashboard.png)
 
-当前版本 **v0.2.0**。第五阶段工程化增量提供权限、审计、运维、备份恢复与独立安装包，使用说明和实现边界见 [Phase 5](docs/phase5.md)。
+当前版本 **v0.3.0**。第五阶段提供权限、审计、运维、备份恢复、独立安装包和远程执行节点。基础工程化见 [Phase 5](docs/phase5.md)，多节点配置与边界见 [远程执行](docs/remote-execution.md)。
 
 ## 环境与安装
 
 - Python 3.12+，Node.js 22.12+（本次验证为 Python 3.12.15、Node 24.21.0）
-- Windows / Linux / macOS；本次实际验证环境为 Windows，Linux 验证流程已配置到 CI，尚未在本机运行。
+- Windows / Linux / macOS；本地实际验证环境为 Windows；Ubuntu 与 Windows 的自动化验证通过 GitHub Actions 执行。
 - 以下命令均从项目根目录执行。Playwright 必须安装 Chromium；仅安装 Python 包不足以运行 Web 测试。
 
 Windows PowerShell：
@@ -153,7 +154,9 @@ python scripts/acceptance.py --data-dir data/acceptance
 
 第四阶段验证：`python scripts/acceptance_phase4.py`，覆盖真实 gRPC、分阶段负载、故障恢复和 Web 操作。设备测试使用 `scripts/acceptance_devices.py`，需要先配置 Appium 和实际设备环境，见 [配置与验证说明](docs/phase4.md)。
 
-第五阶段验证：`python scripts/acceptance_phase5.py`，验证不同角色、项目与证据隔离、身份切换、审计和备份恢复。发布包验证：先构建前端，再运行 `python -m build --wheel` 和 `python scripts/verify_wheel.py dist/omnitest-0.2.0-py3-none-any.whl`，检查离开源码目录后的安装运行。
+第五阶段验证：`python scripts/acceptance_phase5.py`，验证不同角色、项目与证据隔离、身份切换、审计和备份恢复。发布包验证：先构建前端，再运行 `python -m build --wheel` 和 `python scripts/verify_wheel.py dist/omnitest-0.3.0-py3-none-any.whl`，检查离开源码目录后的安装运行。
+
+远程节点验证：`python scripts/acceptance_nodes.py`，真实启动两个独立 worker，验证节点分配、HTTP／Web／文件、取消、断联和平台重启，详见 [远程执行](docs/remote-execution.md)。
 
 ## 配置与执行边界
 
@@ -190,9 +193,9 @@ docker compose up -d platform
 
 新增增量：只读 SQLite、TCP、protobuf gRPC、分阶段 HTTP 负载及延迟／错误率、HTTP 故障注入与恢复观察、Appium 原生应用步骤与截图。Android API 35 模拟器和 Windows 11 WinForms 应用已实际验证；iOS / macOS 连接入口待设备验证。所有新增执行器均通过插件入口注册，另附可独立安装的 JSON 文档检查包。
 
-尚未实现：图形化步骤编排器、cron／时区日历调度、Web 录制、Allure 集成、独立租户隔离、SSO／成员数据库、进程级 CPU／内存配额、远程执行节点、PostgreSQL／MySQL／MQTT、大规模压力执行器、流式 gRPC、系统级 chaos，以及 iOS／macOS 设备验收。项目角色是共享管理权限，不能替代操作系统或设备隔离。
+尚未实现：图形化步骤编排器、cron／时区日历调度、Web 录制、Allure 集成、独立租户隔离、SSO／成员数据库、进程级 CPU／内存配额、PostgreSQL／MySQL／MQTT、大规模压力执行器、流式 gRPC、系统级 chaos，以及 iOS／macOS 设备验收。项目角色是共享管理权限，不能替代操作系统或设备隔离。
 
-第五阶段已提供项目级角色、审计、恢复、SDK 和安装包；多节点、分布式执行及团队成员体系继续按实际部署需求推进。第二阶段 MQTT、日历调度和 Apple 平台实测仍有独立后续项。
+第五阶段已提供项目级角色、审计、恢复、SDK、安装包及固定节点远程执行；多主协调、自动迁移重试及团队成员体系继续按实际部署需求推进。第二阶段 MQTT、日历调度和 Apple 平台实测仍有独立后续项。
 
 ## 工程文档
 
@@ -204,6 +207,7 @@ docker compose up -d platform
 - [第三阶段 AI 配置与使用](docs/phase3.md)
 - [第四阶段设备、协议与故障恢复](docs/phase4.md)
 - [第五阶段权限、运维、恢复与发布](docs/phase5.md)
+- [远程执行节点](docs/remote-execution.md)
 - [实际验收记录](docs/verification.md)
 
 MIT License。

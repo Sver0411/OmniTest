@@ -32,6 +32,7 @@ class Resources:
     def __init__(self, db, registry):
         self.db = db
         self.registry = registry
+        self.nodes = None
 
     def get(self, kind, identity, session=None):
         if session is None:
@@ -76,11 +77,23 @@ class Resources:
             for case_id in body["case_ids"]:
                 self.same_project("cases", case_id, project_id, s)
         elif kind == "schedules":
-            self.same_project("suites", body["suite_id"], project_id, s)
+            body["last_error"] = None
+            suite = self.same_project("suites", body["suite_id"], project_id, s)
             if body["environment_id"]:
                 self.same_project("environments", body["environment_id"], project_id, s)
             if body["next_run"] is None:
                 body["next_run"] = time.time() + body["interval_seconds"]
+            if body["node_id"]:
+                if self.nodes is None:
+                    raise ValueError("Configure an orchestrator before assigning schedule nodes")
+                self.nodes.validate_assignment(
+                    body["node_id"],
+                    project_id,
+                    [
+                        {"case": self.same_project("cases", identity, project_id, s).body}
+                        for identity in suite.body["case_ids"]
+                    ],
+                )
         if identity:
             row = self.get(kind, identity, s)
             if row.project_id != project_id:

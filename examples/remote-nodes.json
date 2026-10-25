@@ -1,0 +1,19 @@
+{
+  "remote_nodes": [
+    {
+      "id": "worker-a",
+      "token_env": "OMNITEST_NODE_ALPHA",
+      "project_ids": ["PROJECT_ID"],
+      "adapters": ["api", "web", "cli"]
+    },
+    {
+      "id": "worker-b",
+      "token_env": "OMNITEST_NODE_BETA",
+      "project_ids": ["PROJECT_ID"],
+      "adapters": ["filecheck", "database", "grpc"]
+    }
+  ],
+  "project_secrets": {
+    "PROJECT_ID": ["OMNITEST_SECRET_STAGING_KEY"]
+  }
+}

@@ -59,7 +59,7 @@ class Redactor:
         self.secrets = [
             v
             for k, v in os.environ.items()
-            if k.startswith(("OMNITEST_SECRET_", "OMNITEST_ACCESS_"))
+            if k.startswith(("OMNITEST_SECRET_", "OMNITEST_ACCESS_", "OMNITEST_NODE_"))
         ]
         self.secrets.extend(str(v) for v in extra if v)
 
