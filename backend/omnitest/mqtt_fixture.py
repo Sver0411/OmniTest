@@ -22,10 +22,21 @@ def broker_config(port, password_file=None):
     }
 
 
-async def serve(port, password_file):
+def create_broker(port, password_file=None):
     from amqtt.broker import Broker
 
-    broker = Broker(broker_config(port, password_file))
+    class ScopedFixtureBroker(Broker):
+        async def _publish_retained_messages_for_subscription(self, subscription, session):
+            # aMQTT 0.12 reconnects replay every global filter, including new clean sessions.
+            subscribers = self._subscriptions.get(subscription[0], [])
+            if any(owner.client_id == session.client_id for owner, _ in subscribers):
+                await super()._publish_retained_messages_for_subscription(subscription, session)
+
+    return ScopedFixtureBroker(broker_config(port, password_file))
+
+
+async def serve(port, password_file):
+    broker = create_broker(port, password_file)
     await broker.start()
     try:
         await asyncio.Event().wait()

@@ -15,6 +15,7 @@ from sqlalchemy import func, select, text
 
 from omnitest import __version__
 from omnitest.adapters.base import Registry
+from omnitest.api.limits import MAX_BODY_BYTES, BodyLimitMiddleware
 from omnitest.config import Settings
 from omnitest.core.ir import Model, RunRequest, Schedule
 from omnitest.core.security import Redactor, contained
@@ -145,7 +146,7 @@ def create_app(settings=None):
             length = int(request.headers.get("content-length", "0"))
         except ValueError:
             raise HTTPException(400, "Invalid Content-Length") from None
-        if length < 0 or length > 5_000_000:
+        if length < 0 or length > MAX_BODY_BYTES:
             return JSONResponse({"detail": "Payload exceeds 5 MB"}, status_code=413)
         if request.url.path.startswith("/api/") and request.url.path not in {
             "/api/health",
@@ -160,8 +161,6 @@ def create_app(settings=None):
             request.state.principal = principal
             if request.method in {"POST", "PUT", "PATCH"}:
                 data = await request.body()
-                if len(data) > 5_000_000:
-                    raise HTTPException(413, "Payload exceeds 5 MB")
                 try:
                     payload = json.loads(data)
                     if isinstance(payload, dict) and isinstance(payload.get("project_id"), str):
@@ -504,4 +503,5 @@ def create_app(settings=None):
             return FileResponse(dist / "index.html")
         return {"message": "Build frontend with npm --prefix frontend run build", "api": "/docs"}
 
+    app.add_middleware(BodyLimitMiddleware)
     return app

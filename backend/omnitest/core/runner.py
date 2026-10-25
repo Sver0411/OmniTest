@@ -7,7 +7,7 @@ import time
 from omnitest.adapters.base import ExecutionContext
 from omnitest.core.assertions import AssertionEngine
 from omnitest.core.ir import Step, TestIR
-from omnitest.core.security import Redactor, render
+from omnitest.core.security import Redactor, contained, render
 
 
 class Runner:
@@ -21,7 +21,7 @@ class Runner:
         started = time.monotonic()
         attempts = []
         status = "ERROR"
-        redactor = Redactor()
+        redactor = Redactor(extra=[self.settings.api_token])
         for attempt in range(case.retries + 1):
             folder = evidence_dir / str(attempt + 1)
             folder.mkdir(parents=True, exist_ok=True)
@@ -59,10 +59,9 @@ class Runner:
                         status = "PASSED"
                         for step in case.steps:
                             step_start = time.monotonic()
-                            resolved = Step.model_validate(
-                                render(step.model_dump(), variables, allowed_secrets)
+                            context.logs.append(
+                                f"[+{time.monotonic() - started:.3f}s] Starting {step.id}: {step.action}"
                             )
-                            context.logs.append(f"Starting {step.id}: {step.action}")
                             step_result = {
                                 "id": step.id,
                                 "action": step.action,
@@ -70,6 +69,9 @@ class Runner:
                             }
                             detail["steps"].append(step_result)
                             try:
+                                resolved = Step.model_validate(
+                                    render(step.model_dump(), variables, allowed_secrets)
+                                )
                                 data = await adapter.execute(resolved, context)
                                 data["duration"] = time.monotonic() - step_start
                                 checked = self.assertions.check(resolved.assertions, data)
@@ -93,6 +95,8 @@ class Runner:
                             except Exception as exc:
                                 step_result.update(status="ERROR", error=str(exc))
                                 raise
+                            finally:
+                                step_result["duration"] = time.monotonic() - step_start
                         checked = self.assertions.check(
                             render_assertions(case.assertions, variables, allowed_secrets), output
                         )
@@ -117,17 +121,34 @@ class Runner:
                         await asyncio.wait_for(adapter.close(), 10)
                     except Exception as exc:
                         detail["logs"].append(f"Cleanup error: {exc}")
+                        detail["error"] = (
+                            f"{detail['error']}; Cleanup error: {exc}"
+                            if detail["error"]
+                            else f"Cleanup error: {exc}"
+                        )
                         if status == "PASSED":
                             status = "ERROR"
-                detail["evidence"] = [f"{attempt + 1}/{name}" for name in context.evidence]
                 for name in context.evidence:
-                    from omnitest.core.security import contained
-
-                    path = contained(folder, name)
-                    if path.suffix.lower() in {".txt", ".json", ".log", ".csv", ".xml"}:
-                        path.write_text(
-                            redactor.clean(path.read_text(encoding="utf-8")), encoding="utf-8"
+                    try:
+                        path = contained(folder, name)
+                        content = path.read_bytes()
+                        try:
+                            text = content.decode("utf-8")
+                        except UnicodeDecodeError:
+                            text = None
+                        if text is not None and "\x00" not in text:
+                            cleaned = redactor.clean(text)
+                            if cleaned != text:
+                                path.write_bytes(cleaned.encode("utf-8"))
+                        detail["evidence"].append(f"{attempt + 1}/{name}")
+                    except (OSError, ValueError) as exc:
+                        message = f"Evidence {name}: {type(exc).__name__}: {exc}"
+                        detail["logs"].append(message)
+                        detail["error"] = (
+                            f"{detail['error']}; {message}" if detail["error"] else message
                         )
+                        if status not in {"CANCELLED", "SKIPPED"}:
+                            status = "ERROR"
                 detail["status"] = status
                 attempts.append(redactor.clean(detail))
             if status not in {"ERROR", "FAILED"}:

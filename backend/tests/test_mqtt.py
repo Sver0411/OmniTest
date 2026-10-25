@@ -10,13 +10,11 @@ from omnitest.adapters.base import ExecutionContext
 from omnitest.adapters.mqtt import MqttAdapter
 from omnitest.core.ir import Step
 from omnitest.core.ir import TestIR as IR
-from omnitest.mqtt_fixture import broker_config
+from omnitest.mqtt_fixture import create_broker
 
 
 @contextmanager
 def running_broker(password_file=None):
-    from amqtt.broker import Broker
-
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]
@@ -24,7 +22,7 @@ def running_broker(password_file=None):
     errors = []
 
     async def serve():
-        broker = Broker(broker_config(port, password_file))
+        broker = create_broker(port, password_file)
         try:
             await broker.start()
             ready.set()
@@ -140,6 +138,71 @@ async def test_binary_and_retained_message_roundtrip(stack, mqtt_broker):
         config={"allow_retained": True},
     )
     assert result["status"] == "PASSED", result
+
+
+async def test_concurrent_binary_and_retained_sessions_do_not_mix_messages(stack, mqtt_broker):
+    from omnitest.core.ir import RunRequest
+    from omnitest.mqtt_demo import seed_mqtt
+
+    demo = seed_mqtt(stack[3], port=mqtt_broker)
+    for _ in range(5):
+        run = stack[4].submit(RunRequest(project_id=demo["project_id"], suite_id=demo["suite_id"]))
+        await stack[4].execute(run["id"])
+        report = stack[4].report(run["id"])
+        assert report["summary"]["counts"] == {"PASSED": 4}, [
+            {
+                "name": row["name"],
+                "status": row["status"],
+                "attempts": row["detail"].get("attempts"),
+            }
+            for row in report["results"]
+            if row["status"] != "PASSED"
+        ]
+
+
+async def test_fixture_does_not_send_retained_messages_to_unsubscribed_sessions(stack, mqtt_broker):
+    prefix = "omnitest/retained-isolation/" + uuid4().hex + "/"
+    context = ExecutionContext(
+        stack[0],
+        {
+            "config": {
+                "host": "127.0.0.1",
+                "port": mqtt_broker,
+                "topic_prefix": prefix,
+                "allow_publish": True,
+                "allow_retained": True,
+            }
+        },
+        stack[0].data_dir,
+        {},
+    )
+    owner, newcomer = MqttAdapter(), MqttAdapter()
+    await owner.check(context)
+    try:
+        await owner.execute(
+            Step(
+                action="publish",
+                config={"topic": prefix + "state", "text": "retained", "retain": True},
+            ),
+            context,
+        )
+        await owner.execute(Step(action="subscribe", config={"topic": prefix + "state"}), context)
+        await newcomer.check(context)
+        await newcomer.execute(
+            Step(action="subscribe", config={"topic": prefix + "binary"}), context
+        )
+        await newcomer.execute(
+            Step(
+                action="publish", config={"topic": prefix + "binary", "hex": "000102ff", "qos": 0}
+            ),
+            context,
+        )
+        message = await newcomer.execute(Step(action="receive"), context)
+        assert message["topic"] == prefix + "binary"
+        assert message["hex"] == "000102ff"
+    finally:
+        await newcomer.close()
+        await owner.close()
 
 
 @pytest.mark.parametrize(

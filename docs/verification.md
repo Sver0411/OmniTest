@@ -121,3 +121,29 @@ iOS / macOS 缺少 Apple 主机与设备，只有连接协议实现，未完成�
 - 本地工作台升级前无活动任务，已归档原历史，备份 SHA-256 `bd0e4e0a668be32c1371b8f1114620ce3abc5d8a74168f79651747a522e14d76`。保留 13 个旧运行，新增 CSV／环境演示实际 **2 PASSED**，`data/release/completion-smoke.json`。新环境表单在 1440 / 820 宽度无横向溢出、保存按钮可见，0 页面错误；原本地管理员模式保留，未自动启用共享账户或保存常设用户令牌。
 
 iOS／macOS 无 Mac 主机，按设备条件保留为未实测项。AI 验证针对可选 Provider 协议及工作流，未声明真实云模型效果评估。节点测试使用同机独立进程；当前增量未触发新的远程 CI 或跨物理机部署测试。五阶段范围和后续扩展见 [实施与验收](roadmap.md)。运行数据库、截图、设备工具、令牌和验收日志不进入 Git。
+
+## 2026-10-25 可靠性与安全修复
+
+本节对应五阶段收尾后的审查，前文各版本记录保留其验收时点。当前 API、Test IR schema、数据库结构及插件 API 版本均未改变，自动化仍可在 AI 关闭时独立运行。
+
+- 最新远程基线的 Windows 作业通过，Ubuntu 在 Docker 构建失败，见 [原 CI](https://github.com/Sver0411/OmniTest/actions/runs/40183839670)。Dockerfile 仍安装 0.2.0 wheel，而源码生成 0.5.0；现改为发现唯一构建产物，CI 的 wheel 安装验证也去除版本硬编码。
+- 新增回归先复现了 7 项执行与凭据缺陷，再完成修复：CLI 宿主机凭据继承、空值／重叠密钥脱敏、单管理员令牌模式的项目凭据越界、重复取消中断清理、服务重启丢失汇总、证据故障覆盖步骤输出，以及 Worker 延迟到整批完成才提交结果。
+- 另覆盖分块请求的提前限量、URL 空用户名凭据、Appium／故障 profile 的凭据范围、CLI 输出溢出及进程树回收、参数错误的步骤定位和非法 JSONPath。断言表达式使用容量为 256 的解析缓存，不改变断言语义。
+- MQTT 端到端暴露 aMQTT 0.12 的 fixture 缺陷：新 clean session 收到其他会话订阅的 retained 消息。确定性测试先失败；本地 fixture 对 retained 重放增加实际会话订阅检查，生产客户端不改写或跳过业务断言。两个并发协议回归及真实 broker 验收通过。
+
+| 验证 | 本地实际结果与证据 |
+| --- | --- |
+| 后端完整测试 | **201 passed，1 skipped**；`data/audit/test-results.xml`；跳过的是 Windows 无法验证的 POSIX 已退出父进程清理路径 |
+| 格式与构建 | Ruff lint、90 个 Python 文件格式、前端 Prettier、TypeScript／Vite 通过 |
+| 核心 API／CLI／Web | CLI 两次各 22 PASSED，Web 22 PASSED；诊断预期 1 FAILED + 1 ERROR；调度重启、JSON 用例 CRUD、报告筛选／搜索和 1440／820 宽度通过；`data/audit/core/summary.json` |
+| 数据库／TCP／性能 | CLI 两次及 Web 各 9 PASSED；`data/audit/phase2/summary.json` |
+| gRPC／分阶段负载／恢复 | CLI 两次及 Web 各 5 PASSED；`data/audit/phase4/summary.json` |
+| 远程节点 | 独立 worker、截图、项目凭据、取消、失联及协调服务重启通过；`data/audit/nodes/summary.json` |
+| MQTT／日历 | CLI 两次各 4 PASSED；真实分钟 Cron 与重启后间隔调度均由 worker 执行 4 PASSED；`data/audit/protocols-fixed/summary.json` |
+| 权限／证据／审计／恢复 | API 和 Web 各 2 PASSED，角色及项目隔离、恢复后的 PNG 通过；`data/audit/access/summary.json` |
+| 数据／环境／团队 | 成员创建、团队撤权、令牌轮换、CSV 类型、环境覆盖和恢复后的远程运行通过；`data/audit/completion/summary.json` |
+| wheel | 新虚拟环境、源码目录外安装；UI、迁移、HTTP、SDK／MQTT、时区、数据集及团队认证通过；`data/audit/wheel-summary.json` |
+
+上述浏览器验收均无页面脚本错误。容器脚本增加实际 Chromium 执行、PNG 下载及重启后的证据一致性检查；本机未安装 Docker，Linux 容器构建与运行以及 POSIX 清理测试由 [main Actions](https://github.com/Sver0411/OmniTest/actions?query=branch%3Amain) 验证，不能用本地静态检查代替容器运行结果。
+
+升级现有配置时，额外 CLI 环境变量须在管理员 profile 的 `inherit_env`／`env` 中显式配置；启用任意 API 认证后，各项目的测试密钥须配置 `project_secrets`。无认证的既有本地模式保持兼容。Windows 已退出父进程的脱离子进程不保证清理；不是 OS 沙箱。仍有一条既有 Starlette/httpx 测试集成弃用提示，本轮未更换测试框架依赖。未重复原生设备实测，Apple 设备仍待 Mac。

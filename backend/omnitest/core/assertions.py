@@ -2,12 +2,16 @@
 
 import operator
 from collections.abc import Callable
+from functools import lru_cache
 from typing import Any
 
 import regex as re
+from jsonpath_ng.exceptions import JSONPathError
 from jsonpath_ng.ext import parse
 
 from .ir import Assertion
+
+parse_path = lru_cache(maxsize=256)(parse)
 
 
 class AssertionEngine:
@@ -38,13 +42,13 @@ class AssertionEngine:
     def evaluate(self, assertion: Assertion, context: Any) -> dict:
         result = {**assertion.model_dump(), "actual": None, "passed": False, "error": None}
         try:
-            matches = [m.value for m in parse(assertion.path).find(context)]
+            matches = [m.value for m in parse_path(assertion.path).find(context)]
             if not matches and assertion.op != "exists":
                 raise ValueError(f"No value at {assertion.path}")
             actual = matches[0] if len(matches) == 1 else matches or None
             result["actual"] = actual
             result["passed"] = bool(self.operators[assertion.op](actual, assertion.expected))
-        except (ValueError, TypeError, KeyError, re.error, TimeoutError) as exc:
+        except (ValueError, TypeError, KeyError, JSONPathError, re.error, TimeoutError) as exc:
             result["error"] = str(exc)
         return result
 

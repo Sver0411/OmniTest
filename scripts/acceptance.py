@@ -198,6 +198,22 @@ def main():
             page.get_by_role("button", name="Acceptance · all passing cases").click()
             page.get_by_role("dialog", name="运行报告").wait_for()
             page.get_by_text("22 通过 / 22 个测试", exact=True).wait_for(timeout=120000)
+            assert page.locator(".result-details").count() == 22
+            page.get_by_label("筛选运行结果").select_option("FAILED")
+            page.get_by_text("没有符合条件的执行结果", exact=True).wait_for()
+            page.get_by_label("筛选运行结果").select_option("PASSED")
+            assert page.locator(".result-details").count() == 22
+            result_name = page.locator(".result-details > summary strong").first.inner_text()
+            page.get_by_label("搜索运行结果").fill(result_name)
+            assert page.locator(".result-details").count() >= 1
+            page.get_by_label("搜索运行结果").fill("no-such-regression-result")
+            page.get_by_text("没有符合条件的执行结果", exact=True).wait_for()
+            page.get_by_label("搜索运行结果").fill("")
+            page.screenshot(path=str(folder / "report-results.png"), full_page=True)
+            page.set_viewport_size({"width": 820, "height": 1000})
+            assert page.locator(".report-modal").evaluate("el => el.scrollWidth <= el.clientWidth")
+            page.screenshot(path=str(folder / "report-tablet.png"), full_page=True)
+            page.set_viewport_size({"width": 1440, "height": 1000})
             page.get_by_label("关闭报告").click()
             page.get_by_role("button", name="测试用例", exact=False).first.click()
             page.get_by_role("button", name="新建用例").first.click()
@@ -254,6 +270,7 @@ def main():
             "frontend": {
                 "suite_run": "22 PASSED",
                 "create_copy_delete": "PASSED",
+                "report_search_and_status_filter": "PASSED",
                 "themes": ["light", "dark"],
                 "viewports": [1440, 820],
                 "console_errors": console_errors,

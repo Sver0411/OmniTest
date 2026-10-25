@@ -43,16 +43,17 @@ class HttpReliabilityAdapter:
         self.origin = check_url(self.base, context.settings.allowed_hosts)
         self.client = httpx.AsyncClient(follow_redirects=False, trust_env=False)
         self.active_fault = None
+        self.allowed_secrets = context.allowed_secrets
 
     async def control_fault(self, profile, restore=False):
         url = profile["restore_url"] if restore else profile["url"]
         check_url(url, self.settings.allowed_hosts)
         body = profile.get("restore_body", {}) if restore else profile.get("body", {})
-        headers = render(profile.get("headers", {}), {})
+        headers = render(profile.get("headers", {}), {}, self.allowed_secrets)
         async with (
             asyncio.timeout(3),
             self.client.stream(
-                "POST", url, json=render(body, {}), headers=headers, timeout=3
+                "POST", url, json=render(body, {}, self.allowed_secrets), headers=headers, timeout=3
             ) as response,
         ):
             response.raise_for_status()

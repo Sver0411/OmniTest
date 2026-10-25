@@ -1,5 +1,7 @@
 # OmniTest
 
+**Automation First, AI Optional.**
+
 面向 API、浏览器、协议与原生应用的通用自动化测试平台，支持本机执行、远程节点和团队协作。
 
 [![Checks](https://github.com/Sver0411/OmniTest/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Sver0411/OmniTest/actions/workflows/ci.yml?query=branch%3Amain)
@@ -28,12 +30,14 @@ Python 执行内核、FastAPI 管理 API、React 管理界面和独立 CLI，共
 
 ## 当前验证状态
 
-- Windows 本地完整后端测试 **183 passed**；Ruff、前端格式检查、TypeScript 和生产构建通过。
+- Windows 本地完整后端测试 **201 passed，1 skipped**；跳过项为仅适用于 POSIX 的已退出父进程清理测试，Linux CI 执行该项。Ruff、前端格式检查、TypeScript 和生产构建通过。
 - 实际执行 API／Web／CLI、数据库／协议、调度、数据与团队协作、远程节点、备份恢复及独立 wheel 安装验收。
 - Android API 35 模拟器和 Windows 原生窗口交互已验证；iOS／macOS 连接实现保留，缺少 Mac，尚未完成实测。
 - 两个远程 worker 在同机独立进程中验证；AI 验证覆盖 Provider 协议和建议流程，未进行真实云模型效果评估。
 
 本地结果详见 [验收记录](docs/verification.md)；Ubuntu／Windows 和容器检查的远程结果以 [main 分支 Actions](https://github.com/Sver0411/OmniTest/actions?query=branch%3Amain) 为准。
+
+本轮修复取消清理、重启汇总、Worker 单用例回传、证据处理和凭据范围问题；报告支持状态／错误搜索、步骤耗时与重试标记。已有 API、Test IR schema、数据库和插件 API 版本保持兼容。
 
 ## 环境与安装
 
@@ -183,7 +187,7 @@ python scripts/acceptance.py --data-dir data/acceptance
 
 第四阶段验证：`python scripts/acceptance_phase4.py`，覆盖真实 gRPC、分阶段负载、故障恢复和 Web 操作。设备测试使用 `scripts/acceptance_devices.py`，需要先配置 Appium 和实际设备环境，见 [配置与验证说明](docs/phase4.md)。
 
-第五阶段验证：`python scripts/acceptance_phase5.py`，验证不同角色、项目与证据隔离、身份切换、审计和备份恢复。发布包验证：先构建前端，再运行 `python -m build --wheel` 和 `python scripts/verify_wheel.py dist/omnitest-0.5.0-py3-none-any.whl`，检查离开源码目录后的安装运行。
+第五阶段验证：`python scripts/acceptance_phase5.py`，验证不同角色、项目与证据隔离、身份切换、审计和备份恢复。发布包验证：先构建前端，再运行 `python -m build --wheel` 和 `python scripts/verify_wheel.py dist`，检查离开源码目录后的安装运行。目录需仅含一个 OmniTest wheel，也可传入具体 wheel 文件路径。Docker 和 CI 同样按构建产物发现安装包，无需手动修改版本号。
 
 远程节点验证：`python scripts/acceptance_nodes.py`，真实启动两个独立 worker，验证节点分配、HTTP／Web／文件、取消、断联和平台重启，详见 [远程执行](docs/remote-execution.md)。
 
@@ -198,13 +202,13 @@ MQTT／日历验证：`python scripts/acceptance_protocols.py`，通过真实 br
 - `OMNITEST_ALLOWED_HOSTS`：逗号分隔的管理员批准远程主机名，默认仅允许 loopback IP 和 localhost。普通用户创建目标不能扩大服务器白名单。
 - `OMNITEST_CONFIG`：管理员配置 JSON 的路径，支持 `allowed_hosts`、`cli_programs`、`file_root`、`database_root`、`grpc_descriptor_root`、`appium_profiles`、`http_faults`、`access_tokens`、`project_secrets`、`remote_nodes`；Web API 无权修改该文件。
 - `OMNITEST_SECRET_*`：敏感凭据仅通过环境变量提供，IR 使用 `${secret.OMNITEST_SECRET_NAME}` 引用。不要将真实密钥写入用例或环境 JSON。
-- `OMNITEST_ACCESS_*`：命名 API 身份的令牌，管理员配置 `access_tokens` 引用；不能通过 Test IR 读取。命名身份模式下，`project_secrets` 控制每个项目可使用的测试凭据，默认不分配。
+- `OMNITEST_ACCESS_*`：命名 API 身份的令牌，管理员配置 `access_tokens` 引用；不能通过 Test IR 读取。启用任意管理 API 认证时（包括 `OMNITEST_API_TOKEN`），`project_secrets` 控制每个项目可使用的测试凭据，默认不分配；Appium 和故障控制 profile 中的凭据引用同样受限。
 - `OMNITEST_NODE_*`：远程节点专用令牌，由 `remote_nodes` 引用；每个节点独立，不能复用管理 API 令牌。远程测试凭据需协调服务与 worker 双侧 `project_secrets` 授权。
 - `PLAYWRIGHT_BROWSERS_PATH`：浏览器安装和运行时须保持一致。
 
 所有目标须设置 `authorized: true`。HTTP 写请求还需目标 `config.allow_mutations: true`。API 不跟随重定向，Web 限制同源请求并禁止 WebSocket。每个用例有超时、最大 3 次重试，最多 100 步；每个任务最多 500 个参数化执行。每个执行节点默认最多并发 4 个用例，多节点可同时执行。
 
-CLI 不接受 shell 命令、可执行路径或任意工作目录，只接受服务器白名单 profile 的参数。管理员应只注册可信、无破坏性且不会脱离父进程运行的程序。具体配置、安全边界与隔离限制见 [架构说明](docs/architecture.md)。
+CLI 不接受 shell 命令、可执行路径或任意工作目录，只接受服务器白名单 profile 的参数。子进程默认只继承 PATH、临时目录、系统与语言等基本环境；额外宿主机变量须通过管理员 profile 的 `inherit_env` 显式允许，固定值可放入 `env`。不会自动传递云平台、GitHub 或 OmniTest 凭据。管理员应只注册可信、无破坏性且不会脱离父进程运行的程序。具体配置、安全边界与隔离限制见 [架构说明](docs/architecture.md)。
 
 ## Docker Compose
 

@@ -131,15 +131,15 @@ class Worker:
                         allowed_secrets=allowed,
                     )
                     annotate_result(outcome, item.get("selection"))
-                    return outcome
+                    return item, outcome
             except asyncio.CancelledError:
-                return {
+                return item, {
                     "status": "CANCELLED",
                     "duration": 0,
                     "detail": {"error": "Cancelled before execution"},
                 }
             except Exception as exc:
-                return {
+                return item, {
                     "status": "ERROR",
                     "duration": 0,
                     "detail": {"error": Redactor().clean(str(exc))},
@@ -157,7 +157,8 @@ class Worker:
                     if response.json()["cancel_requested"] and not cancelling:
                         cancelling = True
                         for task in tasks:
-                            task.cancel()
+                            if not task.cancelling():
+                                task.cancel()
                 except httpx.HTTPError as exc:
                     stale = (
                         isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code < 500
@@ -165,14 +166,15 @@ class Worker:
                     if stale or time.monotonic() - last_contact >= assignment["lease_seconds"] - 8:
                         lost = True
                         for task in tasks:
-                            task.cancel()
+                            if not task.cancelling():
+                                task.cancel()
                         return
                 await asyncio.sleep(3)
 
         monitor = asyncio.create_task(heartbeat())
         try:
-            outcomes = await asyncio.gather(*tasks)
-            for item, outcome in zip(snapshot["cases"], outcomes, strict=True):
+            for completed in asyncio.as_completed(tasks):
+                item, outcome = await completed
                 if lost:
                     return
                 result_id = item["result_id"]
@@ -209,7 +211,7 @@ class Worker:
             log.warning("Result submission interrupted; coordinator will expire the lease")
         finally:
             for task in tasks:
-                if not task.done():
+                if not task.done() and not task.cancelling():
                     task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
             monitor.cancel()

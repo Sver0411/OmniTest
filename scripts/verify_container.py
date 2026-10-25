@@ -92,8 +92,29 @@ def main():
                     },
                 },
             ).json()["id"]
+            browser_case = client.post(
+                "/api/resources/cases",
+                json={
+                    "project_id": project,
+                    "body": {
+                        "name": "Container Chromium",
+                        "adapter": "web",
+                        "target": target,
+                        "steps": [
+                            {
+                                "action": "goto",
+                                "config": {"path": "/api/health"},
+                                "assertions": [
+                                    {"path": "$.text", "op": "contains", "expected": "ok"}
+                                ],
+                            },
+                            {"id": "container-screen", "action": "screenshot"},
+                        ],
+                    },
+                },
+            ).json()["id"]
             identity = client.post(
-                "/api/runs", json={"project_id": project, "case_ids": [case]}
+                "/api/runs", json={"project_id": project, "case_ids": [case, browser_case]}
             ).json()["id"]
             deadline = time.monotonic() + 30
             while True:
@@ -103,16 +124,26 @@ def main():
                 if time.monotonic() > deadline:
                     raise RuntimeError("Container run did not finish")
                 time.sleep(0.1)
-            assert report["summary"]["counts"] == {"PASSED": 1}, report
+            assert report["summary"]["counts"] == {"PASSED": 2}, report
+            result = next(row for row in report["results"] if row["adapter"] == "web")
+            relative = result["detail"]["attempts"][0]["evidence"][0]
+            evidence_url = f"/api/evidence/{identity}/{result['id']}/{relative}"
+            image = client.get(evidence_url)
+            image.raise_for_status()
+            assert image.content.startswith(b"\x89PNG\r\n\x1a\n")
             docker("restart", "--timeout", "10", name)
             wait_ready(client)
             assert client.get("/api/runs/" + identity).json()["status"] == "PASSED"
+            restored_image = client.get(evidence_url)
+            restored_image.raise_for_status()
+            assert restored_image.content == image.content
             assert client.get("/api/audit").json()
             summary = {
                 "image": args.image,
                 "version": client.get("/api/health").json()["version"],
                 "ui": "PASSED",
-                "execution": "1 PASSED",
+                "execution": "2 PASSED (HTTP + Chromium)",
+                "screenshot_after_restart": "PASSED",
                 "history_after_restart": "PASSED",
             }
             directory = Path("data/phase5")

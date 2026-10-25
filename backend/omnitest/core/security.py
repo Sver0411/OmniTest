@@ -16,7 +16,12 @@ def contained(root: Path, relative: str) -> Path:
 
 def check_url(url: str, allowed_hosts: set[str]) -> str:
     parts = urlsplit(url)
-    if parts.scheme not in {"http", "https"} or not parts.hostname or parts.username:
+    if (
+        parts.scheme not in {"http", "https"}
+        or not parts.hostname
+        or parts.username is not None
+        or parts.password is not None
+    ):
         raise ValueError("Only HTTP(S) targets without embedded credentials are supported")
     if parts.hostname not in allowed_hosts and parts.hostname != "localhost":
         try:
@@ -59,9 +64,14 @@ class Redactor:
         self.secrets = [
             v
             for k, v in os.environ.items()
-            if k.startswith(("OMNITEST_SECRET_", "OMNITEST_ACCESS_", "OMNITEST_NODE_"))
+            if v
+            and (
+                k == "OMNITEST_API_TOKEN"
+                or k.startswith(("OMNITEST_SECRET_", "OMNITEST_ACCESS_", "OMNITEST_NODE_"))
+            )
         ]
         self.secrets.extend(str(v) for v in extra if v)
+        self.secrets = sorted(set(self.secrets), key=len, reverse=True)
 
     def clean(self, value):
         if isinstance(value, dict):

@@ -170,6 +170,8 @@ function App() {
     body: string;
   } | null>(null);
   const [report, setReport] = useState<Run | null>(null);
+  const [resultSearch, setResultSearch] = useState("");
+  const [resultFilter, setResultFilter] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
   const [environment, setEnvironment] = useState("");
   const [datasetOptions, setDatasetOptions] = useState<Resource[]>([]);
@@ -311,15 +313,27 @@ function App() {
   }, [page, project, filterAdapter, filterSince, filterUntil]);
   useEffect(() => {
     if (!report || terminal(report.status)) return;
+    let disposed = false;
     const timer = setInterval(
       () =>
         api("/runs/" + report.id)
-          .then(setReport)
-          .catch((e) => setError(String(e))),
+          .then((next) => {
+            if (!disposed) setReport(next);
+          })
+          .catch((e) => {
+            if (!disposed) setError(String(e));
+          }),
       1000,
     );
-    return () => clearInterval(timer);
+    return () => {
+      disposed = true;
+      clearInterval(timer);
+    };
   }, [report?.id, report?.status]);
+  useEffect(() => {
+    setResultSearch("");
+    setResultFilter("");
+  }, [report?.id]);
   async function act(fn: () => Promise<void>) {
     setBusy(true);
     setError("");
@@ -463,6 +477,41 @@ function App() {
       r.id.includes(search) ||
       r.status.toLowerCase().includes(search.toLowerCase()),
   );
+  const resultCounts = (report?.results || []).reduce(
+    (counts: Record<string, number>, result) => {
+      counts[result.status] = (counts[result.status] || 0) + 1;
+      return counts;
+    },
+    {},
+  );
+  const visibleResults = (report?.results || []).filter((result) => {
+    const attempts = result.detail.attempts || [];
+    const matches =
+      resultFilter === "retried"
+        ? attempts.length > 1
+        : !resultFilter || result.status === resultFilter;
+    return (
+      matches &&
+      [
+        result.name,
+        result.id,
+        result.case_id,
+        result.adapter,
+        result.detail.error,
+        ...attempts.map((attempt: any) => attempt.error),
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(resultSearch.toLowerCase())
+    );
+  });
+  const reportCanExecute =
+    permissions.admin ||
+    (system?.principal?.project_roles
+      ? ["editor", "operator"].includes(
+          system.principal.project_roles[report?.project_id || ""],
+        )
+      : permissions.execute);
   const createButton = (kind: string) =>
     !permissions.manage ||
     (kind === "projects" && !permissions.admin) ? null : (
@@ -1519,11 +1568,11 @@ function App() {
             </div>
             <div className="report-toolbar">
               <span>
-                {report.summary.counts?.PASSED || 0} 通过 /{" "}
-                {report.results?.length || 0} 个测试
+                {resultCounts.PASSED || 0} 通过 / {report.results?.length || 0}{" "}
+                个测试
               </span>
               <div className="spacer" />
-              {!terminal(report.status) && permissions.execute && (
+              {!terminal(report.status) && reportCanExecute && (
                 <button
                   disabled={report.cancel_requested}
                   onClick={() =>
@@ -1557,8 +1606,49 @@ function App() {
                 </button>
               ))}
             </div>
+            <div className="report-filters">
+              <div className="search">
+                <Search size={16} />
+                <input
+                  aria-label="搜索运行结果"
+                  placeholder="用例名称、ID 或错误…"
+                  value={resultSearch}
+                  onChange={(event) => setResultSearch(event.target.value)}
+                />
+              </div>
+              <select
+                aria-label="筛选运行结果"
+                value={resultFilter}
+                onChange={(event) => setResultFilter(event.target.value)}
+              >
+                <option value="">
+                  全部结果（{report.results?.length || 0}）
+                </option>
+                {[
+                  "FAILED",
+                  "ERROR",
+                  "CANCELLED",
+                  "PASSED",
+                  "SKIPPED",
+                  "RUNNING",
+                  "PENDING",
+                ].map((status) => (
+                  <option key={status} value={status}>
+                    {status}（{resultCounts[status] || 0}）
+                  </option>
+                ))}
+                <option value="retried">发生重试</option>
+              </select>
+              <span className="muted">{visibleResults.length} 项</span>
+            </div>
             <div className="report-body">
-              {report.results?.map((result) => (
+              {report.summary.error && (
+                <pre className="error-text">{report.summary.error}</pre>
+              )}
+              {visibleResults.length === 0 && (
+                <Empty text="没有符合条件的执行结果" />
+              )}
+              {visibleResults.map((result) => (
                 <details
                   key={result.id}
                   className="result-details"
@@ -1567,6 +1657,13 @@ function App() {
                   <summary>
                     <Badge status={result.status} />
                     <strong>{result.name}</strong>
+                    {result.detail.attempts?.length > 1 && (
+                      <span className="retry-label">
+                        {result.status === "PASSED"
+                          ? "重试后通过"
+                          : `${result.detail.attempts.length} 次尝试`}
+                      </span>
+                    )}
                     <span className="muted">
                       {result.adapter} · {result.duration.toFixed(2)}s
                     </span>
@@ -1582,11 +1679,16 @@ function App() {
                       {attempt.error && (
                         <pre className="error-text">{attempt.error}</pre>
                       )}
-                      {attempt.steps.map((s: any) => (
+                      {attempt.steps?.map((s: any) => (
                         <div className="step-result" key={s.id}>
                           <div>
                             <Badge status={s.status} />
                             <strong>{s.action}</strong>
+                            {typeof s.duration === "number" && (
+                              <span className="muted">
+                                {s.duration.toFixed(3)}s
+                              </span>
+                            )}
                             <code>{s.id}</code>
                           </div>
                           {s.assertions?.map((a: any, j: number) => (
@@ -1607,6 +1709,9 @@ function App() {
                               </span>
                             </div>
                           ))}
+                          {s.error && (
+                            <pre className="error-text">{s.error}</pre>
+                          )}
                           <details>
                             <summary>步骤输出</summary>
                             <pre>{pretty(s.output || s.error)}</pre>
@@ -1625,12 +1730,14 @@ function App() {
                           <pre>{pretty(attempt.preconditions)}</pre>
                         </>
                       )}
-                      <details>
+                      <details
+                        open={["ERROR", "FAILED"].includes(attempt.status)}
+                      >
                         <summary>执行日志</summary>
-                        <pre>{attempt.logs.join("\n") || "无日志"}</pre>
+                        <pre>{attempt.logs?.join("\n") || "无日志"}</pre>
                       </details>
                       <div className="evidence-links">
-                        {attempt.evidence.map((path: string) => (
+                        {attempt.evidence?.map((path: string) => (
                           <button
                             key={path}
                             onClick={() =>

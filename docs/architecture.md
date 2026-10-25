@@ -66,7 +66,7 @@ docs/               产品和开发文档
 
 - 网络目标须明确授权；管理员决定远程主机白名单，默认只认可 loopback IP 和 localhost，避免默认接受可变 DNS 名称。每次 HTTP 请求检查 origin，不自动跟随 redirect。Web 对资源请求执行同源策略、阻止下载和 service worker，禁用 WebSocket。
 - HTTP Body、进程输出、可读文件和步骤数有限额；用例和重试次数有上限。没有 OS 级 CPU／内存配额，也没有对恶意网页的完整网络沙箱。
-- CLI 使用 create_subprocess_exec，无 shell；可执行程序和前缀参数仅来自管理员配置，每个参数逐项 fullmatch。工作目录固定到本次运行的证据目录；用户不能选择 executable 或 cwd。Unix 超时和取消会终止进程组，Windows 终止直接子进程。Phase 1 仅支持不会创建脱离子进程的可信程序；运行未知程序应使用容器或未来的独立 worker。
+- CLI 使用 create_subprocess_exec，无 shell；可执行程序和前缀参数仅来自管理员配置，每个参数逐项 fullmatch。工作目录固定到本次运行的证据目录；用户不能选择 executable 或 cwd。Unix 结束时终止进程组，即使直接父进程已经退出；Windows 在父进程仍存活时通过 taskkill /T /F 清理进程树，再回收管道。Windows 已退出父进程留下的脱离子进程不保证可追踪；这不是 OS 沙箱，仍只支持可信程序。
 - 文件插件限定管理员 file_root，resolve 后检查相对路径；证据只能通过结果 manifest 中的相对路径下载，禁用任意目录浏览。
 - 日志、报告和文本证据对已配置 `OMNITEST_SECRET_*` 的值脱敏，并遮蔽常见敏感字段及 Bearer token；截图遮蔽密码输入、被秘密值填充的输入和目标 mask_selectors。未知业务敏感字段应通过 mask_selectors 配置，截图不保证自动识别页面所有隐私文本。
 - HTTP 写操作单独要求 allow_mutations；CLI profile 注册即属于管理员对该可信程序的执行授权。压力／安全／破坏性操作不在 Phase 1 支持范围，不能通过任意 shell 或 AI 输出绕过执行白名单。
@@ -81,7 +81,9 @@ docs/               产品和开发文档
     "version-check": {
       "argv": ["/usr/local/bin/my-safe-tool", "inspect"],
       "arguments": ["version|health"],
-      "min_args": 1
+      "min_args": 1,
+      "inherit_env": ["TEST_TOOL_REGION"],
+      "env": {"TOOL_MODE": "regression"}
     }
   }
 }
@@ -93,7 +95,9 @@ docs/               产品和开发文档
 
 管理 API 增加独立 AccessControl：命名凭据、角色和项目范围由服务器配置定义，列表查询及详情、导出、执行、取消、证据访问共同受控。未配置命名凭据的本地单管理员模式兼容原有行为。API 请求审计通过 0002 迁移增加独立表，不修改既有项目、用例和运行数据。
 
-平台令牌 `OMNITEST_ACCESS_*` 不属于 Test IR 的 secret 命名空间。命名身份模式下，编排器向 Runner 传入管理员为项目分配的测试凭据名称集合；参数和断言解析仅能访问该集合。HTTP、CLI、调度复用同一规则，核心不导入身份或 AI 模块。CLI 仍移除所有 OMNITEST_* 环境变量，再显式合并管理员 program profile 的环境。
+平台令牌 `OMNITEST_ACCESS_*` 不属于 Test IR 的 secret 命名空间。启用任意管理 API 认证时，编排器向 Runner 传入管理员为项目分配的测试凭据名称集合；参数、断言、Appium capabilities 和故障控制 profile 的引用均受该集合约束。HTTP、CLI、调度复用同一规则，核心不导入身份或 AI 模块。原有无认证本机模式保持兼容。
+
+CLI 默认只继承 PATH／PATHEXT、SystemRoot 等系统路径、临时目录、语言与编码、时区和基本处理器环境。HOME／USERPROFILE、代理、云平台凭据、GitHub Token、自定义变量等不会自动传入。管理员通过 `inherit_env` 逐项允许额外非 OMNITEST_* 变量，通过 `env` 显式设置程序环境；普通项目编辑者不能修改这些 profile。工作目录和环境收敛不能替代文件系统或进程权限隔离。
 
 离线备份在 worker lock 下使用 SQLite backup API 并归档默认证据与 fixture。恢复校验通过后才安装到新目录。正式 wheel 包含 SPA、迁移和公开 SDK，在源码外运行时从包内提供界面。运行维护提供实际队列、审计和加载错误，仍只有一个本地调度器；没有伪造分布式节点。
 

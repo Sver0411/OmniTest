@@ -18,7 +18,8 @@ WORKDIR /app
 COPY --from=package /build/dist/ /wheels/
 COPY requirements-dev.lock /tmp/dependencies.lock
 RUN python -c "from pathlib import Path; p=Path('/tmp/dependencies.lock'); Path('/tmp/constraints.txt').write_text('\n'.join(line for line in p.read_text().splitlines() if '==' in line))" \
-    && pip install --no-cache-dir -c /tmp/constraints.txt '/wheels/omnitest-0.2.0-py3-none-any.whl[grpc]' \
+    && set -- /wheels/omnitest-*.whl && test "$#" -eq 1 && test -f "$1" \
+    && pip install --no-cache-dir -c /tmp/constraints.txt "$1[grpc]" \
     && python -m playwright install --with-deps chromium
 COPY examples/ examples/
 RUN useradd --create-home --uid 10001 omnitest && mkdir -p data && chown -R omnitest:omnitest /app /opt/browsers

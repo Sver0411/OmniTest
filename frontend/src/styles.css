@@ -794,6 +794,23 @@ dd {
   padding: 22px 26px;
   overflow: auto;
 }
+.report-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 26px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.report-filters .search {
+  flex: 1;
+  min-width: 180px;
+}
+.retry-label {
+  color: var(--muted);
+  font-size: 12px;
+}
 .result-details {
   border: 1px solid var(--border);
   border-radius: 7px;

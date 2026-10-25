@@ -10,6 +10,40 @@ from omnitest.core.security import contained
 
 from .base import AdapterInfo
 
+SYSTEM_ENV = {
+    "PATH",
+    "PATHEXT",
+    "SYSTEMROOT",
+    "WINDIR",
+    "COMSPEC",
+    "TEMP",
+    "TMP",
+    "TMPDIR",
+    "LANG",
+    "LANGUAGE",
+    "LC_ALL",
+    "LC_CTYPE",
+    "TZ",
+    "PYTHONUTF8",
+    "PYTHONIOENCODING",
+    "SYSTEMDRIVE",
+    "NUMBER_OF_PROCESSORS",
+    "PROCESSOR_ARCHITECTURE",
+}
+
+
+def process_environment(profile):
+    inherited = set(profile.get("inherit_env", []))
+    return {
+        **{
+            key: value
+            for key, value in os.environ.items()
+            if not key.upper().startswith("OMNITEST_")
+            and (key.upper() in SYSTEM_ENV or key in inherited)
+        },
+        **profile.get("env", {}),
+    }
+
 
 class CliAdapter:
     info = AdapterInfo(
@@ -37,13 +71,11 @@ class CliAdapter:
         if not all(isinstance(a, str) and re.fullmatch(p, a) for a, p in zip(args, patterns)):
             raise ValueError("Argument rejected by program policy")
         start = time.monotonic()
-        env = {k: v for k, v in os.environ.items() if not k.startswith("OMNITEST_")}
-        env.update(self.profile.get("env", {}))
         self.process = await asyncio.create_subprocess_exec(
             *self.profile["argv"],
             *args,
             cwd=context.evidence_dir,
-            env=env,
+            env=process_environment(self.profile),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             start_new_session=os.name != "nt",
@@ -57,12 +89,18 @@ class CliAdapter:
                     raise ValueError("Process output exceeds 1 MB limit")
             return bytes(output).decode("utf-8", errors="replace").replace("\r\n", "\n")
 
+        readers = [
+            asyncio.create_task(read(stream))
+            for stream in [self.process.stdout, self.process.stderr]
+        ]
         try:
-            stdout, stderr = await asyncio.gather(
-                read(self.process.stdout), read(self.process.stderr)
-            )
+            stdout, stderr = await asyncio.gather(*readers)
             code = await self.process.wait()
         finally:
+            for reader in readers:
+                if not reader.done():
+                    reader.cancel()
+            await asyncio.gather(*readers, return_exceptions=True)
             await self.close()
         files = {}
         for name in step.config.get("files", []):
@@ -82,12 +120,24 @@ class CliAdapter:
         }
 
     async def close(self):
-        if getattr(self, "process", None) and self.process.returncode is None:
+        if getattr(self, "process", None):
             if os.name != "nt":
                 try:
                     os.killpg(self.process.pid, signal.SIGKILL)
                 except ProcessLookupError:
                     pass
-            else:
-                self.process.kill()
-            await self.process.wait()
+            elif self.process.returncode is None:
+                terminator = await asyncio.create_subprocess_exec(
+                    os.path.join(os.environ["SystemRoot"], "System32", "taskkill.exe"),
+                    "/PID",
+                    str(self.process.pid),
+                    "/T",
+                    "/F",
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                await terminator.wait()
+                if self.process.returncode is None:
+                    self.process.kill()
+            await self.process.communicate()
+            self.process = None

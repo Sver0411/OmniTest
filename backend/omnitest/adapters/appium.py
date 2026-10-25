@@ -60,7 +60,7 @@ class AppiumAdapter:
         if profile not in context.settings.appium_profiles:
             raise ValueError("Unknown administrator Appium profile")
         cfg = context.settings.appium_profiles[profile]
-        capabilities = render(dict(cfg["capabilities"]), {})
+        capabilities = render(dict(cfg["capabilities"]), {}, context.allowed_secrets)
         platform = str(capabilities.get("platformName", "")).lower()
         if platform == "mac":
             platform = "macos"

@@ -153,18 +153,25 @@ class Orchestrator:
         return run_dict(run)
 
     async def start(self):
+        interrupted = []
         with self.db.session.begin() as s:
             for run in s.scalars(select(Run).where(Run.status == "RUNNING")):
-                run.status, run.finished_at = "ERROR", time.time()
-                run.summary = {
-                    "error": "Service interrupted; run was not replayed to avoid duplicate side effects"
-                }
+                interrupted.append(run.id)
                 for result in s.scalars(
                     select(CaseResult).where(
                         CaseResult.run_id == run.id, CaseResult.status.in_(["PENDING", "RUNNING"])
                     )
                 ):
                     result.status, result.detail = "ERROR", {"error": "Service interrupted"}
+        for run_id in interrupted:
+            self.finalize(run_id)
+            with self.db.session.begin() as s:
+                run = s.get(Run, run_id)
+                run.status = "ERROR"
+                run.summary = {
+                    **run.summary,
+                    "error": "Service interrupted; run was not replayed to avoid duplicate side effects",
+                }
         self.loop_task = asyncio.create_task(self.poll())
 
     async def stop(self):
@@ -173,7 +180,8 @@ class Orchestrator:
             await asyncio.gather(self.loop_task, return_exceptions=True)
         tasks = list(self.active.values())
         for task in tasks:
-            task.cancel()
+            if not task.cancelling():
+                task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
 
     async def poll(self):
@@ -283,7 +291,7 @@ class Orchestrator:
                         item["variables"],
                         self.settings.data_dir / "evidence" / run_id / result_id,
                         allowed_secrets=set(self.settings.project_secrets.get(run.project_id, []))
-                        if self.settings.access_tokens
+                        if self.settings.authentication
                         else None,
                     )
                     from omnitest.core.runner import annotate_result
@@ -313,7 +321,8 @@ class Orchestrator:
             await asyncio.gather(*tasks)
         except asyncio.CancelledError:
             for task in tasks:
-                task.cancel()
+                if not task.cancelling():
+                    task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
         finally:
             self.finalize(run_id)
@@ -323,13 +332,16 @@ class Orchestrator:
             run = s.get(Run, run_id)
             rows = list(s.scalars(select(CaseResult).where(CaseResult.run_id == run_id)))
             lease = s.get(NodeLease, run_id)
+            cancelled = bool(
+                lease and lease.cancel_requested or run.snapshot.get("cancel_requested")
+            )
             for row in rows:
                 if row.status in {"PENDING", "RUNNING"}:
                     row.status, row.detail = (
-                        "CANCELLED" if lease and lease.cancel_requested else "ERROR",
+                        "CANCELLED" if cancelled else "ERROR",
                         {
                             "error": "Execution cancelled"
-                            if lease and lease.cancel_requested
+                            if cancelled
                             else "Execution ended without a final result"
                         },
                     )
@@ -342,7 +354,7 @@ class Orchestrator:
             }
             run.status = (
                 "CANCELLED"
-                if lease and lease.cancel_requested
+                if cancelled
                 else next(
                     (status for status in ["CANCELLED", "ERROR", "FAILED"] if counts.get(status)),
                     "SKIPPED" if counts.get("SKIPPED") == len(rows) else "PASSED",
@@ -356,11 +368,14 @@ class Orchestrator:
             if not run:
                 raise LookupError("Run not found")
             if run.status == "PENDING":
+                run.snapshot = {**run.snapshot, "cancel_requested": True}
                 run.status, run.finished_at = "CANCELLED", time.time()
                 for result in s.scalars(select(CaseResult).where(CaseResult.run_id == run_id)):
                     result.status = "CANCELLED"
             elif run.status == "RUNNING" and run_id in self.active:
-                self.active[run_id].cancel()
+                run.snapshot = {**run.snapshot, "cancel_requested": True}
+                if not self.active[run_id].cancelling():
+                    self.active[run_id].cancel()
             elif run.status == "RUNNING" and (lease := s.get(NodeLease, run_id)):
                 lease.cancel_requested = True
         if run.status == "CANCELLED":
@@ -380,7 +395,8 @@ class Orchestrator:
                 "environment": run.snapshot.get("environment"),
                 "cancel_requested": bool(
                     (lease := s.get(NodeLease, run_id)) and lease.cancel_requested
-                ),
+                )
+                or bool(run.snapshot.get("cancel_requested")),
                 "results": [
                     result_dict(r)
                     for r in sorted(rows, key=lambda r: positions.get(r.id, len(positions)))

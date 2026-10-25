@@ -78,6 +78,11 @@ def main():
     parser.add_argument("--output", default="data/phase5/wheel-summary.json")
     args = parser.parse_args()
     wheel = Path(args.wheel).resolve()
+    if wheel.is_dir():
+        candidates = list(wheel.glob("omnitest-*.whl"))
+        if len(candidates) != 1:
+            parser.error("Wheel directory must contain exactly one OmniTest wheel")
+        wheel = candidates[0]
     with zipfile.ZipFile(wheel) as archive:
         names = archive.namelist()
         if not any(name.startswith("omnitest/static/assets/") for name in names):
