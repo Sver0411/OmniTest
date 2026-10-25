@@ -1,12 +1,12 @@
 # OmniTest
 
-**Automation First, AI Optional.** 面向多种软件、系统、协议和设备的通用自动化测试平台。
+面向 API、浏览器、协议与原生应用的通用自动化测试平台，支持本机执行、远程节点和团队协作。
 
-[![Checks](https://github.com/Sver0411/OmniTest/actions/workflows/ci.yml/badge.svg)](https://github.com/Sver0411/OmniTest/actions/workflows/ci.yml)
+[![Checks](https://github.com/Sver0411/OmniTest/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Sver0411/OmniTest/actions/workflows/ci.yml?query=branch%3Amain)
 [![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-lightgrey)](LICENSE)
 
-Python 执行内核、FastAPI 管理 API、React 管理界面和独立 CLI。真实执行 HTTP、浏览器和受控本地程序测试；文件校验作为第四种领域，通过 Python entry point 接入。
+Python 执行内核、FastAPI 管理 API、React 管理界面和独立 CLI，共用 Test IR、执行队列与报告模型。内置 HTTP、Web、受控 CLI 等执行器，文件、数据库、MQTT、gRPC、Appium 等领域通过 Python entry point 扩展。
 
 核心自动化功能无需任何模型、API Key 或 AI 服务。示例数据只创建测试定义，所有运行记录、统计与证据均来自实际执行。
 
@@ -22,17 +22,31 @@ Python 执行内核、FastAPI 管理 API、React 管理界面和独立 CLI。真
 - **安装与扩展**：包含界面与迁移的 wheel、公开适配器 SDK、插件 API 版本检查与安装包清单。
 - **AI 可选**：自动化核心不依赖 AI；支持可选 Provider、用例生成、失败分析、覆盖与修复建议、报告总结。
 
-**Phase 1 / v0.1.0** 已完成。第二阶段加入 SQLite、TCP、MQTT 和基础性能测试，以及日历调度，详见 [Phase 2](docs/phase2.md)。第三阶段可选 AI 增强已实现，见 [Phase 3](docs/phase3.md)。第四阶段增加 protobuf gRPC、分阶段负载、HTTP 故障恢复与 Appium，已在 Android 模拟器和 Windows 原生应用完成实际验证；Apple 平台连接待独立 Mac 主机验证，详见 [Phase 4](docs/phase4.md)。
+当前版本 **v0.5.0**。五阶段的本机实施范围已完成，包含远程执行、CSV／JSON 数据集、环境目标覆盖和成员／团队权限。阶段范围与验收入口见 [实施与验收](docs/roadmap.md)。
 
 ![OmniTest 工作台](docs/images/dashboard.png)
 
-当前版本 **v0.5.0**。第五阶段提供权限、审计、运维、备份恢复、独立安装包和远程执行节点。基础工程化见 [Phase 5](docs/phase5.md)，多节点配置与边界见 [远程执行](docs/remote-execution.md)。v0.4.0 补齐 MQTT／IoT 协议与时区日历；v0.5.0 增加环境目标覆盖、CSV／JSON 数据集和成员／团队权限。五阶段范围与设备例外见 [阶段实施与验收](docs/roadmap.md)。
+## 当前验证状态
+
+- Windows 本地完整后端测试 **183 passed**；Ruff、前端格式检查、TypeScript 和生产构建通过。
+- 实际执行 API／Web／CLI、数据库／协议、调度、数据与团队协作、远程节点、备份恢复及独立 wheel 安装验收。
+- Android API 35 模拟器和 Windows 原生窗口交互已验证；iOS／macOS 连接实现保留，缺少 Mac，尚未完成实测。
+- 两个远程 worker 在同机独立进程中验证；AI 验证覆盖 Provider 协议和建议流程，未进行真实云模型效果评估。
+
+本地结果详见 [验收记录](docs/verification.md)；Ubuntu／Windows 和容器检查的远程结果以 [main 分支 Actions](https://github.com/Sver0411/OmniTest/actions?query=branch%3Amain) 为准。
 
 ## 环境与安装
 
 - Python 3.12+，Node.js 22.12+（本次验证为 Python 3.12.15、Node 24.21.0）
 - Windows / Linux / macOS；本地实际验证环境为 Windows；已配置 Ubuntu 与 Windows 的 GitHub Actions 流程，远程验证以对应提交的 Actions 记录为准。
 - 以下命令均从项目根目录执行。Playwright 必须安装 Chromium；仅安装 Python 包不足以运行 Web 测试。
+
+获取源码：
+
+```bash
+git clone --branch main https://github.com/Sver0411/OmniTest.git
+cd OmniTest
+```
 
 Windows PowerShell：
 
@@ -85,6 +99,18 @@ omnitest serve
 
 开发前端：运行 `npm --prefix frontend run dev`，访问 Vite 输出的本地地址；`/api` 代理至 8000 端口，避免跨域配置。
 
+## 数据、协作与远程执行
+
+| 需求 | 操作入口 | 说明 |
+| --- | --- | --- |
+| 复用测试数据 | “数据集”导入 CSV／JSON，预览类型后在用例中关联 | [数据集与环境](docs/datasets-environments.md) |
+| 切换测试环境 | “测试环境”配置变量与目标映射，运行时选择环境 | [环境目标覆盖](docs/datasets-environments.md#环境目标覆盖) |
+| 自动定时执行 | “定时任务”配置间隔或 Cron、时区、环境与执行节点 | [MQTT 与日历调度](docs/mqtt-scheduling.md) |
+| 团队共享 | 配置管理员认证后，在“成员与团队”分配项目角色 | [成员与团队](docs/collaboration.md) |
+| 分配远程机器 | 管理员配置固定节点，启动 worker，在“测试执行”选择节点 | [远程执行节点](docs/remote-execution.md) |
+
+共享账户与远程节点需要先配置管理 API 凭据。成员令牌仅在创建或轮换时显示一次；worker 使用独立的 `OMNITEST_NODE_*` 令牌。在节点执行时，localhost、文件、浏览器和设备均指该节点自身。
+
 ## 无前端 CLI
 
 ```bash
@@ -113,7 +139,7 @@ Content-Type: application/json
 {"body":{"name":"My Project","description":"Integration regression"}}
 ```
 
-资源统一接口：`/api/resources/{projects|targets|cases|suites|environments|schedules}`，支持 GET、POST、PUT、DELETE；除项目外，创建时传 `project_id`。跨项目引用、删除仍被引用的资源都会被拒绝。
+资源统一接口：`/api/resources/{projects|targets|cases|suites|environments|datasets|schedules}`，支持 GET、POST、PUT、DELETE；除项目外，创建时传 `project_id`。跨项目引用、删除仍被引用的资源都会被拒绝。
 
 ```http
 POST /api/runs
@@ -121,6 +147,8 @@ Content-Type: application/json
 
 {"project_id":"PROJECT_ID","suite_id":"SUITE_ID"}
 ```
+
+运行请求可选传入 `environment_id` 和 `node_id`，用于环境覆盖与固定节点分配；不传 `node_id` 时在本机执行。用例引用的数据集在提交时展开，运行快照不受后续资源编辑影响。
 
 - `GET /api/runs/{id}`：完整报告及断言、尝试、日志、证据清单
 - `POST /api/runs/{id}/cancel`：取消排队或运行中的任务
@@ -132,14 +160,15 @@ Content-Type: application/json
 - `GET /api/ready`：公开数据库与调度器就绪检查
 - `GET /api/operations`、`GET /api/audit`：管理员运行状态与请求审计
 
-UI 的 JSON 编辑器用于创建、编辑测试配置；右侧提供当前项目的目标、用例、套件和环境 ID。导出的用例可重新导入同一项目；导入其他项目前需将目标 ID 映射到该项目的目标。
+界面提供环境、调度、数据导入和成员／团队表单；用例与部分测试资源支持 JSON 编辑。导出的用例可重新导入同一项目；导入其他项目前需调整目标、数据集等项目内引用。
 
 ## 验证
 
 ```bash
-ruff check backend scripts examples
-ruff format --check backend scripts examples
+ruff check backend scripts examples setup.py
+ruff format --check backend scripts examples setup.py
 pytest -q --junitxml=data/test-results.xml
+npm --prefix frontend run check
 npm --prefix frontend run build
 python scripts/acceptance.py --data-dir data/acceptance
 ```
@@ -165,20 +194,21 @@ MQTT／日历验证：`python scripts/acceptance_protocols.py`，通过真实 br
 ## 配置与执行边界
 
 - `OMNITEST_DATA_DIR`：默认 `data`，包含数据库和 `evidence/`。备份恢复使用本地 `omnitest backup / restore`，先停止同目录服务，详见第五阶段文档。
-- `OMNITEST_API_TOKEN`：启用 Bearer Token；绑定非 loopback 地址时必须设置。在设置页保存到当前浏览器会话，CLI 从同名环境变量读取。
+- `OMNITEST_API_TOKEN`：启用管理员 Bearer Token；绑定非 loopback 地址时必须配置它或命名 `access_tokens`。客户端在设置页保存到当前浏览器会话，CLI 从同名环境变量读取。
 - `OMNITEST_ALLOWED_HOSTS`：逗号分隔的管理员批准远程主机名，默认仅允许 loopback IP 和 localhost。普通用户创建目标不能扩大服务器白名单。
-- `OMNITEST_CONFIG`：管理员配置 JSON 的路径，可配置 `allowed_hosts`、`cli_programs`、`file_root`、`database_root`、`grpc_descriptor_root`、`appium_profiles`、`http_faults`；Web API 无权修改。
+- `OMNITEST_CONFIG`：管理员配置 JSON 的路径，支持 `allowed_hosts`、`cli_programs`、`file_root`、`database_root`、`grpc_descriptor_root`、`appium_profiles`、`http_faults`、`access_tokens`、`project_secrets`、`remote_nodes`；Web API 无权修改该文件。
 - `OMNITEST_SECRET_*`：敏感凭据仅通过环境变量提供，IR 使用 `${secret.OMNITEST_SECRET_NAME}` 引用。不要将真实密钥写入用例或环境 JSON。
 - `OMNITEST_ACCESS_*`：命名 API 身份的令牌，管理员配置 `access_tokens` 引用；不能通过 Test IR 读取。命名身份模式下，`project_secrets` 控制每个项目可使用的测试凭据，默认不分配。
+- `OMNITEST_NODE_*`：远程节点专用令牌，由 `remote_nodes` 引用；每个节点独立，不能复用管理 API 令牌。远程测试凭据需协调服务与 worker 双侧 `project_secrets` 授权。
 - `PLAYWRIGHT_BROWSERS_PATH`：浏览器安装和运行时须保持一致。
 
-所有目标须设置 `authorized: true`。HTTP 写请求还需目标 `config.allow_mutations: true`。API 不跟随重定向，Web 限制同源请求并禁止 WebSocket。每个用例有超时、最大 3 次重试，最多 100 步；每个任务最多 500 个参数化执行，运行中全局并发为 4。
+所有目标须设置 `authorized: true`。HTTP 写请求还需目标 `config.allow_mutations: true`。API 不跟随重定向，Web 限制同源请求并禁止 WebSocket。每个用例有超时、最大 3 次重试，最多 100 步；每个任务最多 500 个参数化执行。每个执行节点默认最多并发 4 个用例，多节点可同时执行。
 
 CLI 不接受 shell 命令、可执行路径或任意工作目录，只接受服务器白名单 profile 的参数。管理员应只注册可信、无破坏性且不会脱离父进程运行的程序。具体配置、安全边界与隔离限制见 [架构说明](docs/architecture.md)。
 
 ## Docker Compose
 
-需要运行 Docker 的主机。镜像通过 wheel 安装运行依赖与包内界面，以普通用户启动，并提供就绪健康检查；Linux CI 配置了实际构建、运行和重启验证。本机 Windows 未安装 Docker，容器验证在 CI 完成。
+需要运行 Docker 的主机。镜像通过 wheel 安装运行依赖与包内界面，以普通用户启动，并提供就绪健康检查；Linux CI 配置了构建、运行和重启验证。本机 Windows 未安装 Docker，当前提交的容器验证结果请查看 Actions。
 
 ```bash
 cp .env.example .env
@@ -191,15 +221,11 @@ docker compose up -d platform
 
 访问 8000，在“系统设置”输入 `.env` 中的令牌。命名 volume 保存数据库与证据。容器以普通用户运行，CLI／Web 在容器里执行，测试“本地”指容器自身；本机部署默认测试本机。
 
-## 实现范围与后续路线
+## 当前边界与后续扩展
 
-已实现：项目／目标／用例／套件／环境／持久化间隔调度 CRUD、Test IR、适配器协议与 entry point 插件发现、HTTP／Web／CLI／文件检查、统一断言、前置条件、数据驱动、顺序与受控并发、重试／超时／取消、任务快照、结果中心、历史趋势、截图与文件证据、JSON／JUnit 导出、CLI、深浅主题。
+当前采用单协调服务、SQLite 和固定节点分配。失联任务记录为 ERROR，不自动迁移重放。项目角色与团队授权用于管理访问，不能替代操作系统或设备隔离。
 
-新增增量：只读 SQLite、TCP、protobuf gRPC、分阶段 HTTP 负载及延迟／错误率、HTTP 故障注入与恢复观察、Appium 原生应用步骤与截图。Android API 35 模拟器和 Windows 11 WinForms 应用已实际验证；iOS / macOS 连接入口待设备验证。所有新增执行器均通过插件入口注册，另附可独立安装的 JSON 文档检查包。
-
-尚未实现：图形化步骤编排器、Web 录制、Allure 集成、独立租户隔离、SSO、进程级 CPU／内存配额、PostgreSQL／MySQL、大规模压力执行器、流式 gRPC、系统级 chaos，以及 iOS／macOS 设备验收。项目角色是共享管理权限，不能替代操作系统或设备隔离。
-
-第五阶段已提供项目级角色、审计、恢复、SDK、安装包及固定节点远程执行；多主协调与自动迁移重试继续按实际部署需求推进。成员、团队、环境覆盖和数据集已实现；Apple 平台实际验证仍需 Mac 主机。
+后续扩展包括图形化步骤编排、Web 录制、Allure、SSO、独立租户隔离、进程 CPU／内存配额、PostgreSQL／MySQL、大规模压测、流式 gRPC、系统级故障注入和多主协调。iOS／macOS 实测仍需 Mac 主机与相应设备，详见 [阶段范围](docs/roadmap.md)。
 
 ## 工程文档
 
