@@ -93,11 +93,40 @@ class Schedule(Model):
     name: str = Field(min_length=1, max_length=200)
     suite_id: str
     environment_id: str | None = None
-    interval_seconds: int = Field(ge=5, le=31536000)
+    schedule_type: Literal["interval", "cron"] = "interval"
+    interval_seconds: int | None = Field(default=None, ge=5, le=31536000)
+    cron: str | None = Field(default=None, max_length=200)
+    timezone: str = Field(default="UTC", max_length=100)
+    overlap: Literal["allow", "skip"] = "skip"
+    misfire_policy: Literal["coalesce", "skip"] = "coalesce"
+    misfire_grace_seconds: int = Field(default=60, ge=1, le=86400)
     enabled: bool = True
     next_run: float | None = None
     node_id: str | None = Field(default=None, pattern=r"^[a-zA-Z0-9_-]{1,80}$")
     last_error: str | None = Field(default=None, max_length=2000)
+    last_run_id: str | None = None
+    last_triggered_at: float | None = None
+    skipped_count: int = Field(default=0, ge=0)
+    last_skip_reason: str | None = None
+
+    @model_validator(mode="after")
+    def timing(self):
+        import time
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+        from omnitest.services.calendar import next_occurrence
+
+        try:
+            ZoneInfo(self.timezone)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError("Unknown IANA schedule timezone") from exc
+        if self.schedule_type == "interval":
+            if self.interval_seconds is None or self.cron is not None:
+                raise ValueError("Interval schedules require interval_seconds and no cron")
+        elif self.interval_seconds is not None or not self.cron:
+            raise ValueError("Cron schedules require cron and no interval_seconds")
+        next_occurrence(self.model_dump(), time.time())
+        return self
 
 
 class RunRequest(Model):

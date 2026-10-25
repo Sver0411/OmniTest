@@ -104,3 +104,9 @@ docs/               产品和开发文档
 v0.3.0 为 Orchestrator 增加独立 NodeService，使用 node_states / node_leases 持久化节点状态和运行租约。管理端提交时校验项目和适配器范围，固定选择本机或节点，任务快照记录 node_id；本机 poll 不领取远程任务。worker 通过独立节点凭据调用 /api/worker 领取、续约、上传证据和提交单用例结果。复用相同 Runner / Adapter 协议，不将 HTTP、浏览器或设备逻辑放进协调器。
 
 当前单进程协调服务持有 SQLite 目录锁，线程锁串行化租约领取与取消／完成；不共享 SQLite 至执行节点。租约失效或服务重启结束已领取任务且不重放，旧结果由 claim_id 与终态检查拒绝。远程测试凭据取协调服务与节点 project_secrets 交集。完整运行步骤、传输额度及限制见 [远程执行](remote-execution.md)。
+
+## MQTT 与日历调度
+
+MQTTAdapter 通过 entry point 注册，使用 Paho 网络线程与 asyncio 任务通信；SUBACK / PUBACK 以 Future 桥接，入站消息通过有界队列传递，结束时断开并等待线程退出。ExecutionContext 增加可选 allowed_secrets 供连接阶段读取项目授权的凭据引用，不改变旧适配器调用方式。发布／订阅另受目标 topic_prefix 和写入授权约束。
+
+Schedule 的 JSON 字段兼容旧 interval_seconds 配置，新增 Cron、IANA 时区、重叠与补跑策略。calendar 模块只使用 APScheduler CronTrigger 计算时间，不启动第二个调度器。原有短事务中同时更新下次时间、跳过状态或新运行，重复触发检查以持久化 source 关联已有 PENDING / RUNNING 任务。预览不创建运行，夏令时行为与实现边界见 [MQTT 与日历调度](mqtt-scheduling.md)。

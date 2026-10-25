@@ -168,14 +168,38 @@ class Orchestrator:
             await asyncio.sleep(0.25)
 
     def tick_schedules(self):
+        from omnitest.services.calendar import next_occurrence
+
         now = time.time()
         with self.db.session.begin() as s:
             for schedule in s.scalars(select(Resource).where(Resource.kind == "schedules")):
                 cfg = schedule.body
                 if cfg["enabled"] and cfg["next_run"] <= now:
                     try:
+                        next_run = next_occurrence(cfg, now)
+                        active = s.scalar(
+                            select(Run.id).where(
+                                Run.status.in_(["PENDING", "RUNNING"]),
+                                Run.snapshot["source"].as_string() == f"schedule:{schedule.id}",
+                            )
+                        )
+                        reason = None
+                        if cfg.get("misfire_policy", "coalesce") == "skip" and now - cfg[
+                            "next_run"
+                        ] > cfg.get("misfire_grace_seconds", 60):
+                            reason = "Missed schedule occurrence exceeded grace period"
+                        elif cfg.get("overlap", "allow") == "skip" and active:
+                            reason = "Previous scheduled run is still pending or running"
+                        if reason:
+                            schedule.body = {
+                                **cfg,
+                                "next_run": next_run,
+                                "skipped_count": cfg.get("skipped_count", 0) + 1,
+                                "last_skip_reason": reason,
+                            }
+                            continue
                         with s.begin_nested():
-                            self.submit(
+                            submitted = self.submit(
                                 RunRequest(
                                     project_id=schedule.project_id,
                                     suite_id=cfg["suite_id"],
@@ -185,7 +209,14 @@ class Orchestrator:
                                 source=f"schedule:{schedule.id}",
                                 session=s,
                             )
-                        schedule.body = {**cfg, "next_run": now + cfg["interval_seconds"]}
+                        schedule.body = {
+                            **cfg,
+                            "next_run": next_run,
+                            "last_run_id": submitted["id"],
+                            "last_triggered_at": now,
+                            "last_skip_reason": None,
+                            "last_error": None,
+                        }
                     except (ValueError, LookupError) as exc:
                         from omnitest.core.security import Redactor
 

@@ -30,6 +30,7 @@ class ExecutionContext:
     variables: dict
     evidence: list[str] = field(default_factory=list)
     logs: list[str] = field(default_factory=list)
+    allowed_secrets: set[str] | None = None
 
 
 class Adapter(Protocol):

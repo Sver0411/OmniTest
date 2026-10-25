@@ -1,8 +1,8 @@
 # Phase 2：测试领域扩展
 
-第二阶段进行中。首个增量已经实现数据库、TCP 协议和小规模 HTTP 性能测试；没有修改 `Runner`、Test IR、任务状态机或报告生命周期。三个适配器都通过 `omnitest.adapters` entry point 接入，与第一阶段使用相同的用例、套件、CLI、API 和结果中心。
+首个增量已经实现数据库、TCP 协议和小规模 HTTP 性能测试；没有修改 `Runner`、Test IR、任务状态机或报告生命周期。三个适配器都通过 `omnitest.adapters` entry point 接入，与第一阶段使用相同的用例、套件、CLI、API 和结果中心。
 
-MQTT／IoT、PostgreSQL／MySQL、更完整的环境覆盖、cron／时区调度和外部数据集导入尚未完成。本增量不代表整个第二阶段已结束。
+v0.4.0 新增真实 MQTT／IoT 协议执行、Cron／时区日历、重叠和补跑策略，见 [MQTT 与调度](mqtt-scheduling.md)。PostgreSQL／MySQL、更完整的环境覆盖和外部数据集导入仍为后续扩展。
 
 ## 可复现示例
 
@@ -82,7 +82,7 @@ python scripts/acceptance_phase2.py
 
 也可提供 hex 代替 text。read_mode=line 等待 LF（响应包含分隔符），exact 配合 read_bytes 等待固定长度。单次收发上限 64 KB，同一用例的多个步骤共享连接，用例结束、超时或取消后关闭连接。输出 `text`、`hex`、`bytes_sent`、`bytes_received`。
 
-它验证指定端点的协议交互，不进行端口扫描，也不宣称支持尚未实现的 MQTT 或 gRPC。
+它验证指定端点的协议交互，不进行端口扫描，MQTT 与 gRPC 由独立适配器实现。
 
 ## HTTP Performance Adapter
 
@@ -111,4 +111,4 @@ python scripts/acceptance_phase2.py
 
 2026-10-24 本地验收结果：完整回归 **57 passed**；第二阶段套件通过 CLI 连续运行两次，每次 **9 PASSED**，再通过 Web 运行得到 **9 PASSED**；浏览器脚本错误为 0。原始摘要为 `data/phase2/summary.json`，完整回归 JUnit 为 `data/phase2/tests.xml`。这些运行数据不会包含在 Git 源码中。
 
-后续依次推进 MQTT／IoT、环境按目标覆盖、调度重叠策略与时区日历、CSV／JSON 数据集管理。没有设备或 broker 的功能不会用占位结果冒充完成。
+MQTT／IoT 与调度重叠、时区日历已在 v0.4.0 实现；后续继续扩展环境按目标覆盖和 CSV／JSON 数据集管理。没有设备或 broker 的功能不会用占位结果冒充完成。

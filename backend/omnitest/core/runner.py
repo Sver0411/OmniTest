@@ -25,7 +25,9 @@ class Runner:
         for attempt in range(case.retries + 1):
             folder = evidence_dir / str(attempt + 1)
             folder.mkdir(parents=True, exist_ok=True)
-            context = ExecutionContext(self.settings, target, folder, variables)
+            context = ExecutionContext(
+                self.settings, target, folder, variables, allowed_secrets=allowed_secrets
+            )
             detail = {
                 "attempt": attempt + 1,
                 "steps": [],

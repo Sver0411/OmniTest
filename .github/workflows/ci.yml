@@ -30,10 +30,11 @@ jobs:
       - run: python scripts/acceptance_phase4.py
       - run: python scripts/acceptance_phase5.py
       - run: python scripts/acceptance_nodes.py
+      - run: python scripts/acceptance_protocols.py
       - run: python -m build --wheel
         env:
           OMNITEST_REQUIRE_UI: '1'
-      - run: python scripts/verify_wheel.py dist/omnitest-0.3.0-py3-none-any.whl
+      - run: python scripts/verify_wheel.py dist/omnitest-0.4.0-py3-none-any.whl
       - run: docker build -t omnitest:ci .
         if: runner.os == 'Linux'
       - run: python scripts/verify_container.py
@@ -49,4 +50,5 @@ jobs:
             data/phase4/
             data/phase5/
             data/nodes/
+            data/protocols/
             dist/*.whl

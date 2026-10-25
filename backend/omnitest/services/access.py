@@ -123,6 +123,7 @@ class AccessControl:
             "/api/adapters",
             "/api/dashboard",
             "/api/nodes",
+            "/api/schedules/preview",
         }:
             return
         if path == "/api/cases/import":

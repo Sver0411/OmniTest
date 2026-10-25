@@ -28,6 +28,7 @@ import {
 import "./styles.css";
 import AIWorkspace from "./AIWorkspace";
 import Operations from "./Operations";
+import ScheduleEditor from "./ScheduleEditor";
 
 type Resource = {
   id: string;
@@ -359,6 +360,12 @@ function App() {
           environment_id: null,
           node_id: null,
           interval_seconds: 3600,
+          schedule_type: "interval",
+          timezone:
+            Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Shanghai",
+          overlap: "skip",
+          misfire_policy: "coalesce",
+          misfire_grace_seconds: 60,
           enabled: true,
         };
     }
@@ -854,14 +861,22 @@ function App() {
                                       }
                                     />
                                     <small>
-                                      每 {row.body.interval_seconds}s · 下次{" "}
-                                      {date(row.body.next_run)}
+                                      {row.body.schedule_type === "cron"
+                                        ? `${row.body.cron} · ${row.body.timezone}`
+                                        : `每 ${row.body.interval_seconds}s`}{" "}
+                                      · 下次 {date(row.body.next_run)}
                                       {" · "}
                                       {row.body.node_id || "本机"}
                                     </small>
                                     {row.body.last_error && (
                                       <small className="error-text">
                                         {row.body.last_error}
+                                      </small>
+                                    )}
+                                    {!!row.body.skipped_count && (
+                                      <small>
+                                        已跳过 {row.body.skipped_count} 次 ·{" "}
+                                        {row.body.last_skip_reason}
                                       </small>
                                     )}
                                   </>
@@ -1273,57 +1288,72 @@ function App() {
                 <pre>{error}</pre>
               </div>
             )}
-            <div className="editor-body">
-              <textarea
-                aria-label="资源 JSON"
-                spellCheck={false}
-                value={editor.body}
-                onChange={(e) => setEditor({ ...editor, body: e.target.value })}
+            {editor.kind === "schedules" ? (
+              <ScheduleEditor
+                body={editor.body}
+                onChange={(body) => setEditor({ ...editor, body })}
+                suites={suiteOptions}
+                environments={environments}
+                nodes={nodes}
+                api={api}
               />
-              <aside>
-                <h4>项目资源引用</h4>
-                {[
-                  ...targets,
-                  ...caseOptions,
-                  ...suiteOptions,
-                  ...environments,
-                ].map((r) => (
-                  <div key={r.id}>
-                    <strong>{r.body.name}</strong>
-                    <code>{r.id}</code>
-                  </div>
-                ))}
-                <h4>提示</h4>
-                <p>
-                  目标必须明确授权。HTTP 写请求需设置 allow_mutations。CLI
-                  只能选择服务器已配置的 program。
-                </p>
-                <p>
-                  参数引用：<code>{"${name}"}</code>
-                  <br />
-                  凭据引用：<code>{"${secret.OMNITEST_SECRET_NAME}"}</code>
-                </p>
-                <p>
-                  常用断言：eq、ne、contains、regex、gt、lt、exists、set_eq。
-                </p>
-              </aside>
-            </div>
-            <div className="modal-footer">
-              <button
-                onClick={() => {
-                  try {
-                    setEditor({
-                      ...editor,
-                      body: pretty(JSON.parse(editor.body)),
-                    });
-                  } catch (e) {
-                    setError(String(e));
+            ) : (
+              <div className="editor-body">
+                <textarea
+                  aria-label="资源 JSON"
+                  spellCheck={false}
+                  value={editor.body}
+                  onChange={(e) =>
+                    setEditor({ ...editor, body: e.target.value })
                   }
-                }}
-              >
-                <Braces size={15} />
-                格式化
-              </button>
+                />
+                <aside>
+                  <h4>项目资源引用</h4>
+                  {[
+                    ...targets,
+                    ...caseOptions,
+                    ...suiteOptions,
+                    ...environments,
+                  ].map((r) => (
+                    <div key={r.id}>
+                      <strong>{r.body.name}</strong>
+                      <code>{r.id}</code>
+                    </div>
+                  ))}
+                  <h4>提示</h4>
+                  <p>
+                    目标必须明确授权。HTTP 写请求需设置 allow_mutations。CLI
+                    只能选择服务器已配置的 program。
+                  </p>
+                  <p>
+                    参数引用：<code>{"${name}"}</code>
+                    <br />
+                    凭据引用：<code>{"${secret.OMNITEST_SECRET_NAME}"}</code>
+                  </p>
+                  <p>
+                    常用断言：eq、ne、contains、regex、gt、lt、exists、set_eq。
+                  </p>
+                </aside>
+              </div>
+            )}
+            <div className="modal-footer">
+              {editor.kind !== "schedules" && (
+                <button
+                  onClick={() => {
+                    try {
+                      setEditor({
+                        ...editor,
+                        body: pretty(JSON.parse(editor.body)),
+                      });
+                    } catch (e) {
+                      setError(String(e));
+                    }
+                  }}
+                >
+                  <Braces size={15} />
+                  格式化
+                </button>
+              )}
               <div className="spacer" />
               <button onClick={() => setEditor(null)}>取消</button>
               <button

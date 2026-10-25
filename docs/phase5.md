@@ -113,13 +113,13 @@ npm --prefix frontend ci
 npm --prefix frontend run build
 $env:OMNITEST_REQUIRE_UI = '1'
 python -m build --wheel
-python scripts/verify_wheel.py dist/omnitest-0.3.0-py3-none-any.whl
+python scripts/verify_wheel.py dist/omnitest-0.4.0-py3-none-any.whl
 ```
 
 构建时将已生成的 SPA 放入 wheel，包含后端、迁移、SDK、插件入口及界面资源，排除开发测试包。`OMNITEST_REQUIRE_UI=1` 可防止发布缺少界面的包。源码开发仍优先使用项目的 `frontend/dist`，安装后的服务在源码目录之外使用包内静态资源。
 
 ```powershell
-python -m pip install "dist/omnitest-0.3.0-py3-none-any.whl[grpc]"
+python -m pip install "dist/omnitest-0.4.0-py3-none-any.whl[grpc]"
 omnitest --data-dir PATH_TO_DATA init
 omnitest --data-dir PATH_TO_DATA serve
 ```

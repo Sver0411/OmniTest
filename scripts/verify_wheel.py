@@ -53,8 +53,10 @@ try:
             time.sleep(.03)
         assert report['status']=='PASSED',report
         assert client.get('/api/audit').json()
-        assert 'json-document' in {row['id'] for row in client.get('/api/adapters').json()['items']}
-    print(json.dumps({'version':omnitest.__version__,'package':str(Path(omnitest.__file__).resolve()),'ui':'PASSED','migrations':'PASSED','execution':'1 PASSED','sdk_plugin':'PASSED'}))
+        assert {'json-document','mqtt'}.issubset({row['id'] for row in client.get('/api/adapters').json()['items']})
+        calendar=client.get('/api/schedules/preview',params={'cron':'0 9 * * mon-fri','timezone':'Asia/Shanghai'})
+        assert calendar.status_code==200 and len(calendar.json()['occurrences'])==5,calendar.text
+    print(json.dumps({'version':omnitest.__version__,'package':str(Path(omnitest.__file__).resolve()),'ui':'PASSED','migrations':'PASSED','execution':'1 PASSED','sdk_plugin':'PASSED','mqtt_plugin':'PASSED','calendar_timezone':'PASSED'}))
 finally:
     server.should_exit=True;thread.join(10);sock.close()
 """

@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from importlib.metadata import entry_points
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
@@ -16,7 +16,7 @@ from sqlalchemy import func, select, text
 from omnitest import __version__
 from omnitest.adapters.base import Registry
 from omnitest.config import Settings
-from omnitest.core.ir import Model, RunRequest
+from omnitest.core.ir import Model, RunRequest, Schedule
 from omnitest.core.security import Redactor, contained
 from omnitest.db import AuditEvent, Database, Resource, Run
 from omnitest.services.access import AccessControl, Principal
@@ -251,6 +251,29 @@ def create_app(settings=None):
     def adapters():
         return registry.inventory()
 
+    @app.get("/api/schedules/preview")
+    def schedule_preview(
+        schedule_type: str = "cron",
+        cron: str | None = None,
+        interval_seconds: int | None = None,
+        timezone: str = "UTC",
+        after: float | None = Query(default=None, ge=0, le=4102444800, allow_inf_nan=False),
+    ):
+        from omnitest.services.calendar import preview
+
+        value = Schedule(
+            name="Preview",
+            suite_id="preview",
+            schedule_type=schedule_type,
+            cron=cron,
+            interval_seconds=interval_seconds,
+            timezone=timezone,
+        )
+        return {
+            "timezone": value.timezone,
+            "occurrences": preview(value.model_dump(), after if after is not None else time.time()),
+        }
+
     @app.get("/api/settings")
     def system_settings(request: Request):
         admin = request.state.principal.admin
@@ -266,7 +289,7 @@ def create_app(settings=None):
             "http_faults": list(settings.http_faults) if admin else [],
             "allowed_remote_hosts": sorted(settings.allowed_hosts) if admin else [],
             "authentication": settings.authentication,
-            "scheduler": "persistent interval",
+            "scheduler": "persistent interval and timezone cron",
             "principal": request.state.principal.describe(),
             "schemas": {kind: schema.model_json_schema() for kind, schema in SCHEMAS.items()},
         }

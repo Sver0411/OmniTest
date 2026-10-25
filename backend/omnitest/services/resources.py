@@ -78,11 +78,21 @@ class Resources:
                 self.same_project("cases", case_id, project_id, s)
         elif kind == "schedules":
             body["last_error"] = None
+            previous = self.get(kind, identity, s).body if identity else {}
+            for key in ["last_run_id", "last_triggered_at", "skipped_count", "last_skip_reason"]:
+                body[key] = previous.get(key, 0 if key == "skipped_count" else None)
+            if identity and any(
+                body.get(key) != previous.get(key)
+                for key in ["schedule_type", "interval_seconds", "cron", "timezone"]
+            ):
+                body["next_run"] = None
             suite = self.same_project("suites", body["suite_id"], project_id, s)
             if body["environment_id"]:
                 self.same_project("environments", body["environment_id"], project_id, s)
             if body["next_run"] is None:
-                body["next_run"] = time.time() + body["interval_seconds"]
+                from omnitest.services.calendar import next_occurrence
+
+                body["next_run"] = next_occurrence(body, time.time())
             if body["node_id"]:
                 if self.nodes is None:
                     raise ValueError("Configure an orchestrator before assigning schedule nodes")

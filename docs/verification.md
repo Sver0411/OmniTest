@@ -97,3 +97,13 @@ iOS / macOS 缺少 Apple 主机与设备，只有连接协议实现，未完成�
 - wheel：构建 `omnitest-0.3.0-py3-none-any.whl`，全新虚拟环境在源码目录外安装，包内界面、迁移、实际 HTTP **1 PASSED** 和独立 SDK 插件通过，见 `data/nodes/wheel-summary.json`。
 
 本地两节点验证发生在同一 Windows 主机的独立进程中，不代表跨物理机网络、HTTPS 代理证书、SSO、多主协调或 Apple 设备实测。CI 同时为 Ubuntu / Windows 配置上述节点脚本及现有各阶段验收，远程结果以对应提交的 Actions 记录为准。
+
+## 2026-10-25 MQTT 与日历调度 v0.4.0
+
+- 完整后端回归 **159 passed**，JUnit 为 `data/protocols-tests.xml`，仍有 1 条既有 Starlette/httpx 测试集成弃用提示。Ruff、前端格式、TypeScript 与生产构建通过。新增 30 项协议与日历测试，覆盖真实 broker 的 QoS 0／1、JSON／二进制／保留消息、密码认证和项目凭据拒绝、真实入站消息及队列限额、取消、Cron／时区／夏令时、重叠、补跑与旧间隔配置兼容。
+- MQTT 套件由 CLI 连续两次执行，每次 **4 PASSED**。Chromium 表单创建每分钟 Cron 后，等待真实分钟边界，计划时间 `1792900200.0`、实际建任务时间 `1792900200.1437333`，由独立远程 worker 执行 **4 PASSED**。重启后持久化间隔任务再次自动触发 **4 PASSED**，日历配置、历史及 JUnit 导出正常，0 页面脚本错误。摘要 `data/protocols/summary.json`。
+- 本机核心回归：两次 CLI 各 **22 PASSED**，Web **22 PASSED**；预期诊断 1 FAILED + 1 ERROR；调度重启、文件插件、用例 CRUD、主题和两种宽度正常，见 `data/protocols-regression-core/summary.json`。
+- 独立安装包：构建 `omnitest-0.4.0-py3-none-any.whl`，在新虚拟环境和源码外验证包内 UI、迁移、实际 HTTP 执行与 SDK 插件，见 `data/protocols/wheel-summary.json`。
+- 本地工作台升级前归档 13 个数据库／证据文件，备份 SHA-256 `7f92d4b86509e14bdaa3ae11b478abfd496933799e67b53aff860fc9f32d6e67`。原 12 个运行保留，新增 MQTT 冒烟 **4 PASSED**，新增日历示例默认停用。实际服务版本 0.4.0，就绪检查通过。最新表单在 1440 / 820 宽度下无横向溢出，保存按钮可见，0 页面错误。
+
+本批结果为 Windows 本地实测，新的远程 CI 未触发；流程已加入 MQTT、日历和远程 worker 验收。没有物理 IoT 设备、生产 TLS broker、Apple 设备或跨物理机器验收的声明。

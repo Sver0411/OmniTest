@@ -39,6 +39,11 @@ def main():
     phase2.add_argument("--base-url", default="http://127.0.0.1:8765")
     phase2.add_argument("--tcp-host", default="127.0.0.1")
     phase2.add_argument("--tcp-port", type=int, default=8766)
+    mqtt_demo = sub.add_parser("seed-mqtt")
+    mqtt_demo.add_argument("--host", default="127.0.0.1")
+    mqtt_demo.add_argument("--port", type=int, default=18883)
+    mqtt_demo.add_argument("--username")
+    mqtt_demo.add_argument("--password-secret")
     phase4 = sub.add_parser("seed-phase4")
     phase4.add_argument("--base-url", default="http://127.0.0.1:8785")
     phase4.add_argument("--grpc-host", default="127.0.0.1")
@@ -127,6 +132,10 @@ async def local(args, settings):
             from omnitest.phase2_demo import seed_phase2
 
             value = seed_phase2(resources, settings, args.base_url, args.tcp_host, args.tcp_port)
+        elif args.command == "seed-mqtt":
+            from omnitest.mqtt_demo import seed_mqtt
+
+            value = seed_mqtt(resources, args.host, args.port, args.username, args.password_secret)
         elif args.command == "list":
             value = resources.list(args.kind, args.project)
         elif args.command == "seed-phase4":
