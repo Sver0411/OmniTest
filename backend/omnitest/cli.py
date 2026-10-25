@@ -57,12 +57,22 @@ def main():
     run.add_argument("--node", help="Execution node ID (requires --url)")
     listing = sub.add_parser("list")
     listing.add_argument(
-        "kind", choices=["projects", "targets", "cases", "suites", "environments", "schedules"]
+        "kind",
+        choices=["projects", "targets", "cases", "suites", "environments", "schedules", "datasets"],
     )
     listing.add_argument("--project")
     report = sub.add_parser("report")
     report.add_argument("run_id")
     report.add_argument("--output")
+    data_import = sub.add_parser("import-dataset")
+    data_import.add_argument("--project", required=True)
+    data_import.add_argument("--file", required=True)
+    data_import.add_argument("--name")
+    data_import.add_argument("--column-types", default="{}", help="CSV column-to-type JSON object")
+    data_export = sub.add_parser("export-dataset")
+    data_export.add_argument("dataset_id")
+    data_export.add_argument("--format", choices=["json", "csv"], default="json")
+    data_export.add_argument("--output", required=True)
     args = parser.parse_args()
     if args.command in {"backup", "restore"}:
         from omnitest.services.backup import backup, restore
@@ -136,6 +146,20 @@ async def local(args, settings):
             from omnitest.mqtt_demo import seed_mqtt
 
             value = seed_mqtt(resources, args.host, args.port, args.username, args.password_secret)
+        elif args.command == "import-dataset":
+            from omnitest.services.datasets import parse_dataset
+
+            payload = dataset_payload(args)
+            body, _ = parse_dataset(payload)
+            value = resources.save("datasets", body, args.project, dataset_source=body["source"])
+        elif args.command == "export-dataset":
+            from omnitest.services.datasets import export_dataset
+
+            content, _ = export_dataset(
+                resources.get("datasets", args.dataset_id).body, args.format
+            )
+            Path(args.output).write_text(content, encoding="utf-8", newline="")
+            value = {"output": str(Path(args.output).resolve())}
         elif args.command == "list":
             value = resources.list(args.kind, args.project)
         elif args.command == "seed-phase4":
@@ -171,7 +195,19 @@ async def remote(args, settings):
     async with httpx.AsyncClient(
         base_url=args.url, headers=headers, timeout=30, trust_env=False
     ) as client:
-        if args.command == "list":
+        if args.command == "import-dataset":
+            response = await client.post(
+                "/api/datasets/import", json=dataset_payload(args).model_dump()
+            )
+        elif args.command == "export-dataset":
+            response = await client.get(
+                f"/api/datasets/{args.dataset_id}/export", params={"format": args.format}
+            )
+            response.raise_for_status()
+            Path(args.output).write_text(response.text, encoding="utf-8", newline="")
+            emit({"output": str(Path(args.output).resolve())})
+            return 0
+        elif args.command == "list":
             response = await client.get(
                 f"/api/resources/{args.kind}",
                 params={"project_id": args.project} if args.project else {},
@@ -217,3 +253,19 @@ def emit(value, output=None):
         Path(output).write_text(text, encoding="utf-8")
     else:
         print(text)
+
+
+def dataset_payload(args):
+    from omnitest.services.datasets import MAX_BYTES, ImportDataset
+
+    file = Path(args.file)
+    if file.stat().st_size > MAX_BYTES:
+        raise ValueError("Dataset file exceeds 1 MB")
+    return ImportDataset(
+        project_id=args.project,
+        format=file.suffix.lower().removeprefix("."),
+        filename=file.name,
+        name=args.name,
+        content=file.read_bytes().decode("utf-8"),
+        column_types=json.loads(args.column_types),
+    )

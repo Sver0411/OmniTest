@@ -49,6 +49,7 @@ class TestIR(Model):
     preconditions: list[Assertion] = Field(default_factory=list, max_length=100)
     parameters: dict[str, Any] = Field(default_factory=dict)
     datasets: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
+    dataset_ids: list[str] = Field(default_factory=list, max_length=10)
     steps: list[Step] = Field(min_length=1, max_length=100)
     assertions: list[Assertion] = Field(default_factory=list, max_length=100)
     environment: dict[str, Any] = Field(default_factory=dict)
@@ -62,6 +63,10 @@ class TestIR(Model):
     def unique_steps(self):
         if len({s.id for s in self.steps}) != len(self.steps):
             raise ValueError("Step IDs must be unique")
+        if self.datasets and self.dataset_ids:
+            raise ValueError("Use either inline datasets or dataset_ids")
+        if len(set(self.dataset_ids)) != len(self.dataset_ids):
+            raise ValueError("Dataset references must be unique")
         return self
 
 
@@ -80,6 +85,28 @@ class Target(Model):
 class Environment(Model):
     name: str = Field(min_length=1, max_length=200)
     variables: dict[str, Any] = Field(default_factory=dict)
+    target_overrides: dict[str, str] = Field(default_factory=dict, max_length=100)
+
+
+class DatasetSource(Model):
+    format: Literal["csv", "json"]
+    filename: str = Field(min_length=1, max_length=200)
+    sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    column_types: dict[str, str] = Field(default_factory=dict)
+
+
+class Dataset(Model):
+    name: str = Field(min_length=1, max_length=200)
+    description: str = ""
+    rows: list[dict[str, Any]] = Field(min_length=1, max_length=100)
+    source: DatasetSource | None = None
+
+    @model_validator(mode="after")
+    def tabular(self):
+        from omnitest.services.datasets import validate_rows
+
+        validate_rows(self.rows)
+        return self
 
 
 class Suite(Model):

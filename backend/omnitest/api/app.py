@@ -53,6 +53,7 @@ def create_app(settings=None):
         worker_lock.acquire()
         try:
             db.migrate()
+            access.members.startup()
             await orchestrator.start()
             yield
         finally:
@@ -66,6 +67,9 @@ def create_app(settings=None):
     from omnitest.services.nodes import mount
 
     mount(app, orchestrator.nodes, orchestrator)
+    from omnitest.services.members import mount as mount_members
+
+    mount_members(app, access.members)
     for extension in entry_points(group="omnitest.extensions"):
         try:
             extension.load()(app, db, resources, orchestrator, settings)
@@ -107,7 +111,7 @@ def create_app(settings=None):
                     session.add(
                         AuditEvent(
                             actor=actor.name,
-                            role=actor.role,
+                            role=actor.role_for(request.state.project_id),
                             method=request.method,
                             path=Redactor().clean(request.url.path[:500]),
                             project_id=request.state.project_id,
@@ -170,6 +174,8 @@ def create_app(settings=None):
                     request.state.project_id = access.project_for(Run, parts[2])
                 elif len(parts) == 4 and parts[1] == "resources" and parts[2] in SCHEMAS:
                     request.state.project_id = access.project_for(Resource, parts[3], parts[2])
+                elif len(parts) == 4 and parts[1] == "datasets":
+                    request.state.project_id = access.project_for(Resource, parts[2], "datasets")
                 elif len(parts) >= 5 and parts[1:3] == ["worker", "runs"]:
                     request.state.project_id = access.project_for(Run, parts[3])
             except HTTPException:
@@ -196,8 +202,8 @@ def create_app(settings=None):
         }
 
     @app.get("/api/session")
-    def current_session(request: Request):
-        return request.state.principal.describe()
+    def current_session(request: Request, project_id: str | None = None):
+        return request.state.principal.describe(project_id)
 
     @app.get("/api/ready")
     def ready():
@@ -275,7 +281,7 @@ def create_app(settings=None):
         }
 
     @app.get("/api/settings")
-    def system_settings(request: Request):
+    def system_settings(request: Request, project_id: str | None = None):
         admin = request.state.principal.admin
         return {
             "ai": {
@@ -290,7 +296,7 @@ def create_app(settings=None):
             "allowed_remote_hosts": sorted(settings.allowed_hosts) if admin else [],
             "authentication": settings.authentication,
             "scheduler": "persistent interval and timezone cron",
-            "principal": request.state.principal.describe(),
+            "principal": request.state.principal.describe(project_id),
             "schemas": {kind: schema.model_json_schema() for kind, schema in SCHEMAS.items()},
         }
 
@@ -318,6 +324,35 @@ def create_app(settings=None):
                 resources.save("cases", body, payload.project_id, session=s)
                 for body in payload.cases
             ]
+
+    from omnitest.services.datasets import ImportDataset, export_dataset, parse_dataset
+
+    @app.post("/api/datasets/preview")
+    def preview_dataset(payload: ImportDataset):
+        resources.get("projects", payload.project_id)
+        body, columns = parse_dataset(payload)
+        return {
+            "name": body["name"],
+            "columns": columns,
+            "row_count": len(body["rows"]),
+            "rows": body["rows"][:10],
+            "source": body["source"],
+        }
+
+    @app.post("/api/datasets/import", status_code=201)
+    def import_dataset(payload: ImportDataset):
+        body, _ = parse_dataset(payload)
+        return resources.save("datasets", body, payload.project_id, dataset_source=body["source"])
+
+    @app.get("/api/datasets/{identity}/export")
+    def export_dataset_resource(identity: str, format: str = "json"):
+        row = resources.get("datasets", identity)
+        content, media = export_dataset(row.body, format)
+        return Response(
+            content,
+            media_type=media,
+            headers={"Content-Disposition": f'attachment; filename="{identity}.{format}"'},
+        )
 
     @app.get("/api/resources/{kind}/{identity}")
     def get_resource(kind: str, identity: str):

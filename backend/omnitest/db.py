@@ -78,6 +78,38 @@ class NodeLease(Base):
     evidence_count: Mapped[int] = mapped_column(default=0)
 
 
+class Member(Base):
+    __tablename__ = "members"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=uid)
+    username: Mapped[str] = mapped_column(String, unique=True)
+    display_name: Mapped[str] = mapped_column(String)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    token_digest: Mapped[str] = mapped_column(String, unique=True)
+    project_roles: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[float] = mapped_column(Float, default=time.time)
+    rotated_at: Mapped[float] = mapped_column(Float, default=time.time)
+
+
+class Team(Base):
+    __tablename__ = "teams"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=uid)
+    name: Mapped[str] = mapped_column(String, unique=True)
+    description: Mapped[str] = mapped_column(String, default="")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    project_roles: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class TeamMember(Base):
+    __tablename__ = "team_members"
+    team_id: Mapped[str] = mapped_column(
+        ForeignKey("teams.id", ondelete="CASCADE"), primary_key=True
+    )
+    member_id: Mapped[str] = mapped_column(
+        ForeignKey("members.id", ondelete="CASCADE"), primary_key=True, index=True
+    )
+
+
 class Database:
     def __init__(self, url):
         self.engine = create_engine(url, connect_args={"check_same_thread": False, "timeout": 30})

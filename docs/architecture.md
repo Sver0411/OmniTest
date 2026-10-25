@@ -110,3 +110,9 @@ v0.3.0 为 Orchestrator 增加独立 NodeService，使用 node_states / node_lea
 MQTTAdapter 通过 entry point 注册，使用 Paho 网络线程与 asyncio 任务通信；SUBACK / PUBACK 以 Future 桥接，入站消息通过有界队列传递，结束时断开并等待线程退出。ExecutionContext 增加可选 allowed_secrets 供连接阶段读取项目授权的凭据引用，不改变旧适配器调用方式。发布／订阅另受目标 topic_prefix 和写入授权约束。
 
 Schedule 的 JSON 字段兼容旧 interval_seconds 配置，新增 Cron、IANA 时区、重叠与补跑策略。calendar 模块只使用 APScheduler CronTrigger 计算时间，不启动第二个调度器。原有短事务中同时更新下次时间、跳过状态或新运行，重复触发检查以持久化 source 关联已有 PENDING / RUNNING 任务。预览不创建运行，夏令时行为与实现边界见 [MQTT 与日历调度](mqtt-scheduling.md)。
+
+## 数据计划与成员授权
+
+Dataset 使用既有 resources 表保存经验证的行，TestIR 的 dataset_ids 由资源服务检查同项目引用。Environment.target_overrides 只能映射同项目、同类型目标。Orchestrator 在提交事务中展开行、解析实际目标并复制来源至快照；本机与 worker 注入相同 selection 元数据，节点回传时由协调服务确认该来源。导入原文件不作为可执行代码或服务器路径使用。
+
+迁移 0004 增加 members、teams 和 team_members，成员令牌只存高熵凭据的 SHA-256 摘要。AccessControl 每个请求读取启用成员及团队，按项目合并角色，在解析实际资源项目之后检查写入／执行权限。界面 settings 查询附带当前 project_id 取得对应按钮权限，身份切换仍清理先前会话数据。启动时拒绝含账户的数据库降级为无认证本地模式，保留管理员文件凭据作为引导入口。

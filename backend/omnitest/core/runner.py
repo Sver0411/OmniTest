@@ -152,6 +152,11 @@ class Runner:
         }
 
 
+def annotate_result(outcome, selection):
+    if selection:
+        outcome["detail"]["selection"] = Redactor().clean(selection)
+
+
 def render_assertions(assertions, variables, allowed_secrets=None):
     from omnitest.core.ir import Assertion
 

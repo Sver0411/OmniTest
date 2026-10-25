@@ -24,11 +24,16 @@ import {
   Sun,
   Trash2,
   X,
+  Users,
 } from "lucide-react";
 import "./styles.css";
 import AIWorkspace from "./AIWorkspace";
 import Operations from "./Operations";
 import ScheduleEditor from "./ScheduleEditor";
+import DatasetImport from "./DatasetImport";
+import DatasetBinding from "./DatasetBinding";
+import EnvironmentEditor from "./EnvironmentEditor";
+import Collaboration from "./Collaboration";
 
 type Resource = {
   id: string;
@@ -61,7 +66,9 @@ const names: Record<string, string> = {
   settings: "系统设置",
   ai: "AI 辅助",
   environments: "测试环境",
+  datasets: "数据集",
   operations: "运行维护",
+  collaboration: "成员与团队",
 };
 const icons: Record<string, any> = {
   dashboard: LayoutDashboard,
@@ -76,7 +83,9 @@ const icons: Record<string, any> = {
   settings: Settings2,
   ai: Boxes,
   environments: Braces,
+  datasets: Braces,
   operations: Activity,
+  collaboration: Users,
 };
 const date = (t?: number) =>
   t ? new Date(t * 1000).toLocaleString("zh-CN", { hour12: false }) : "—";
@@ -163,6 +172,10 @@ function App() {
   const [report, setReport] = useState<Run | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [environment, setEnvironment] = useState("");
+  const [datasetOptions, setDatasetOptions] = useState<Resource[]>([]);
+  const [datasetFile, setDatasetFile] = useState<File | null>(null);
+  const [binding, setBinding] = useState<Resource | null>(null);
+  const [editorValid, setEditorValid] = useState(true);
   const [environments, setEnvironments] = useState<Resource[]>([]);
   const [concurrency, setConcurrency] = useState(1);
   const [nodes, setNodes] = useState<any[]>([]);
@@ -182,6 +195,9 @@ function App() {
     setCaseOptions([]);
     setSuiteOptions([]);
     setEnvironments([]);
+    setDatasetOptions([]);
+    setDatasetFile(null);
+    setBinding(null);
     setNodes([]);
     setNode("");
     setReport(null);
@@ -231,13 +247,14 @@ function App() {
         "schedules",
         "targets",
         "environments",
+        "datasets",
         "projects",
       ].includes(page);
       const [ps, ds, ss, ads, nextRuns, nextRows, projectResources, nextNodes] =
         await Promise.all([
           api("/resources/projects"),
           api("/dashboard" + query),
-          api("/settings"),
+          api("/settings" + query),
           api("/adapters"),
           ["execution", "reports", "dashboard"].includes(page)
             ? api("/runs?" + params)
@@ -247,11 +264,11 @@ function App() {
             : Promise.resolve([]),
           project
             ? Promise.all(
-                ["targets", "environments", "suites", "cases"].map((k) =>
-                  api("/resources/" + k + query),
+                ["targets", "environments", "suites", "cases", "datasets"].map(
+                  (k) => api("/resources/" + k + query),
                 ),
               )
-            : Promise.resolve([[], [], [], []]),
+            : Promise.resolve([[], [], [], [], []]),
           project ? api("/nodes" + query) : Promise.resolve([]),
         ]);
       if (version !== refreshVersion.current) return;
@@ -262,11 +279,12 @@ function App() {
       setRuns(nextRuns);
       setRows(nextRows);
       setNodes(nextNodes);
-      const [ts, es, suites, cases] = projectResources;
+      const [ts, es, suites, cases, datasets] = projectResources;
       setTargets(ts);
       setEnvironments(es);
       setSuiteOptions(suites);
       setCaseOptions(cases);
+      setDatasetOptions(datasets);
       if (ads.errors.length) setError(ads.errors.join("; "));
     } catch (e) {
       if (version === refreshVersion.current) setError(String(e));
@@ -325,7 +343,13 @@ function App() {
           config: { base_url: "http://127.0.0.1:8765", allow_mutations: false },
         };
       case "environments":
-        return { name: "Local", variables: {} };
+        return { name: "Local", variables: {}, target_overrides: {} };
+      case "datasets":
+        return {
+          name: "新数据集",
+          description: "",
+          rows: [{ input: "", expected: "" }],
+        };
       case "cases":
         return {
           name: "新 API 测试",
@@ -378,6 +402,7 @@ function App() {
       body.name += " · 副本";
     }
     setEditor({ kind, row: copy ? undefined : row, body: pretty(body) });
+    setEditorValid(true);
   }
   async function saveEditor() {
     if (!editor) return;
@@ -422,11 +447,17 @@ function App() {
     setNotice("任务已进入执行队列");
     await refresh(true);
   }
-  const filtered = rows.filter((r) =>
-    (r.body.name + pretty(r.body.tags || []))
-      .toLowerCase()
-      .includes(search.toLowerCase()),
-  );
+  const filtered = rows
+    .filter(
+      (r) =>
+        r.kind === page &&
+        (page === "projects" || !project || r.project_id === project),
+    )
+    .filter((r) =>
+      (r.body.name + pretty(r.body.tags || []))
+        .toLowerCase()
+        .includes(search.toLowerCase()),
+    );
   const visibleRuns = runs.filter(
     (r) =>
       r.id.includes(search) ||
@@ -550,12 +581,16 @@ function App() {
             "adapters",
             "schedules",
             "environments",
+            "datasets",
             "ai",
             "operations",
+            "collaboration",
             "settings",
           ]
             .filter(
-              (p) => !["ai", "operations"].includes(p) || permissions.admin,
+              (p) =>
+                !["ai", "operations", "collaboration"].includes(p) ||
+                permissions.admin,
             )
             .map((p) => {
               const Icon = icons[p];
@@ -598,6 +633,7 @@ function App() {
                   editor: "编辑者",
                   operator: "执行者",
                   viewer: "只读",
+                  member: "成员",
                 }[system.principal.role as string]
               }
             </span>
@@ -759,6 +795,7 @@ function App() {
                 "suites",
                 "schedules",
                 "environments",
+                "datasets",
               ].includes(page) && (
                 <section className="panel">
                   <div className="toolbar">
@@ -773,6 +810,23 @@ function App() {
                     </div>
                     <span className="muted">{filtered.length} 条记录</span>
                     <div className="spacer" />
+                    {page === "datasets" && permissions.manage && (
+                      <label className="button">
+                        导入 CSV / JSON
+                        <input
+                          aria-label="导入数据集文件"
+                          type="file"
+                          accept=".csv,.json"
+                          hidden
+                          disabled={!project}
+                          onChange={(event) => {
+                            const file = event.target.files?.[0];
+                            if (file) setDatasetFile(file);
+                            event.target.value = "";
+                          }}
+                        />
+                      </label>
+                    )}
                     {page === "cases" && permissions.manage && (
                       <>
                         <label className="button">
@@ -880,6 +934,8 @@ function App() {
                                       </small>
                                     )}
                                   </>
+                                ) : page === "datasets" ? (
+                                  `${row.body.rows.length} 行 · ${Object.keys(row.body.rows[0]).length} 列`
                                 ) : page === "targets" ? (
                                   <>
                                     <span className="neutral-tag">
@@ -906,6 +962,28 @@ function App() {
                               </td>
                               <td>
                                 <div className="row-actions">
+                                  {page === "datasets" && (
+                                    <button
+                                      onClick={() =>
+                                        act(() =>
+                                          download(
+                                            `/datasets/${row.id}/export?format=json`,
+                                            `${row.id}.json`,
+                                          ),
+                                        )
+                                      }
+                                    >
+                                      导出 JSON
+                                    </button>
+                                  )}
+                                  {page === "cases" && (
+                                    <button
+                                      disabled={!permissions.manage || !project}
+                                      onClick={() => setBinding(row)}
+                                    >
+                                      数据集
+                                    </button>
+                                  )}
                                   {["cases", "suites"].includes(page) && (
                                     <button
                                       aria-label="运行"
@@ -927,7 +1005,15 @@ function App() {
                                     </button>
                                   )}
                                   <button
-                                    disabled={!permissions.manage}
+                                    disabled={
+                                      !permissions.manage ||
+                                      (page === "projects" &&
+                                        !permissions.admin &&
+                                        !!system?.principal?.project_roles &&
+                                        system.principal.project_roles[
+                                          row.id
+                                        ] !== "editor")
+                                    }
                                     onClick={() => {
                                       if (row.project_id)
                                         setProject(row.project_id);
@@ -1190,6 +1276,9 @@ function App() {
               {page === "ai" && permissions.admin && (
                 <AIWorkspace project={project} api={api} onError={setError} />
               )}
+              {page === "collaboration" && permissions.admin && (
+                <Collaboration api={api} projects={projects} />
+              )}
               {page === "operations" && permissions.admin && (
                 <Operations api={api} onError={setError} />
               )}
@@ -1288,7 +1377,14 @@ function App() {
                 <pre>{error}</pre>
               </div>
             )}
-            {editor.kind === "schedules" ? (
+            {editor.kind === "environments" ? (
+              <EnvironmentEditor
+                body={editor.body}
+                targets={targets}
+                onChange={(body) => setEditor({ ...editor, body })}
+                onValidity={setEditorValid}
+              />
+            ) : editor.kind === "schedules" ? (
               <ScheduleEditor
                 body={editor.body}
                 onChange={(body) => setEditor({ ...editor, body })}
@@ -1314,6 +1410,7 @@ function App() {
                     ...caseOptions,
                     ...suiteOptions,
                     ...environments,
+                    ...datasetOptions,
                   ].map((r) => (
                     <div key={r.id}>
                       <strong>{r.body.name}</strong>
@@ -1337,7 +1434,7 @@ function App() {
               </div>
             )}
             <div className="modal-footer">
-              {editor.kind !== "schedules" && (
+              {!["schedules", "environments"].includes(editor.kind) && (
                 <button
                   onClick={() => {
                     try {
@@ -1358,7 +1455,7 @@ function App() {
               <button onClick={() => setEditor(null)}>取消</button>
               <button
                 className="primary"
-                disabled={busy}
+                disabled={busy || !editorValid}
                 onClick={() => act(saveEditor)}
               >
                 <Check size={15} />
@@ -1367,6 +1464,35 @@ function App() {
             </div>
           </section>
         </div>
+      )}
+      {datasetFile && (
+        <DatasetImport
+          file={datasetFile}
+          project={project}
+          api={api}
+          onClose={() => setDatasetFile(null)}
+          onSaved={() => {
+            setDatasetFile(null);
+            setNotice("数据集已导入");
+            refresh();
+          }}
+        />
+      )}
+      {binding && (
+        <DatasetBinding
+          row={binding}
+          datasets={datasetOptions}
+          onClose={() => setBinding(null)}
+          onSave={async (body) => {
+            await api("/resources/cases/" + binding.id, {
+              method: "PUT",
+              body: pretty({ project_id: binding.project_id, body }),
+            });
+            setBinding(null);
+            setNotice("数据集关联已保存");
+            await refresh();
+          }}
+        />
       )}
       {report && (
         <div className="modal-backdrop">
@@ -1534,6 +1660,7 @@ function App() {
                       {pretty({
                         environment: result.detail.environment,
                         parameters: result.detail.parameters,
+                        selection: result.detail.selection,
                       })}
                     </pre>
                   </details>

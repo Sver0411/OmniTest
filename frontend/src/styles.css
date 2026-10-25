@@ -1166,3 +1166,81 @@ dd {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.dataset-import,
+.environment-editor {
+  padding: 24px;
+  overflow: auto;
+  min-height: 0;
+}
+.dataset-import > label,
+.environment-editor > label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 18px;
+  font-size: 13px;
+}
+.dataset-import p,
+.environment-editor > p {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0 0 18px;
+}
+.dataset-import th select {
+  display: block;
+  margin-top: 8px;
+  min-width: 100px;
+}
+.environment-editor textarea {
+  min-height: 130px;
+  font-family: ui-monospace, monospace;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  color: var(--text);
+  background: var(--surface);
+}
+.target-mapping {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+.target-mapping select {
+  min-width: 0;
+  width: 100%;
+}
+.environment-editor .dataset-choice {
+  flex-direction: row;
+  align-items: center;
+}
+@media (max-width: 700px) {
+  .target-mapping {
+    grid-template-columns: 1fr;
+  }
+}
+
+.grant-fields {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 18px;
+  margin: 18px 0;
+}
+.grant-fields legend {
+  font-size: 14px;
+  padding: 0 8px;
+}
+.grant-fields > label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+  margin: 10px 0;
+  font-size: 13px;
+}
+.grant-fields select {
+  min-width: 150px;
+}

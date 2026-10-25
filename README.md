@@ -14,11 +14,11 @@ Python 执行内核、FastAPI 管理 API、React 管理界面和独立 CLI。真
 
 - **通用测试内核**：可序列化 Test IR、统一任务生命周期、参数化与确定性断言。
 - **可插拔执行器**：API、Web、受控 CLI、文件、数据库、TCP、MQTT、gRPC、Appium，以及 HTTP 负载与可靠性测试。
-- **测试管理**：项目、授权目标、用例、套件、环境和持久化间隔／Cron 时区调度、重叠与补跑策略。
+- **测试管理**：项目、授权目标、用例、套件、可复用 CSV／JSON 数据集、环境目标映射和持久化间隔／Cron 时区调度、重叠与补跑策略。
 - **执行与报告**：并发限制、超时、重试、取消、历史记录、截图与文件证据、JSON / JUnit 导出。
 - **多种使用入口**：Web 管理界面、CLI 和 REST API。
 - **远程执行**：独立 worker 主动领取固定节点任务、心跳租约、取消、报告与证据回传。
-- **共享与运维**：项目范围的管理员／编辑者／执行者／只读凭据、操作审计、就绪检查、运行维护、离线备份恢复。
+- **共享与运维**：项目范围的管理员／编辑者／执行者／只读凭据、成员与团队授权、操作审计、就绪检查、运行维护、离线备份恢复。
 - **安装与扩展**：包含界面与迁移的 wheel、公开适配器 SDK、插件 API 版本检查与安装包清单。
 - **AI 可选**：自动化核心不依赖 AI；支持可选 Provider、用例生成、失败分析、覆盖与修复建议、报告总结。
 
@@ -26,7 +26,7 @@ Python 执行内核、FastAPI 管理 API、React 管理界面和独立 CLI。真
 
 ![OmniTest 工作台](docs/images/dashboard.png)
 
-当前版本 **v0.4.0**。第五阶段提供权限、审计、运维、备份恢复、独立安装包和远程执行节点。基础工程化见 [Phase 5](docs/phase5.md)，多节点配置与边界见 [远程执行](docs/remote-execution.md)。v0.4.0 补齐 MQTT／IoT 协议与时区日历，见 [MQTT 与调度](docs/mqtt-scheduling.md)。
+当前版本 **v0.5.0**。第五阶段提供权限、审计、运维、备份恢复、独立安装包和远程执行节点。基础工程化见 [Phase 5](docs/phase5.md)，多节点配置与边界见 [远程执行](docs/remote-execution.md)。v0.4.0 补齐 MQTT／IoT 协议与时区日历；v0.5.0 增加环境目标覆盖、CSV／JSON 数据集和成员／团队权限。五阶段范围与设备例外见 [阶段实施与验收](docs/roadmap.md)。
 
 ## 环境与安装
 
@@ -154,11 +154,13 @@ python scripts/acceptance.py --data-dir data/acceptance
 
 第四阶段验证：`python scripts/acceptance_phase4.py`，覆盖真实 gRPC、分阶段负载、故障恢复和 Web 操作。设备测试使用 `scripts/acceptance_devices.py`，需要先配置 Appium 和实际设备环境，见 [配置与验证说明](docs/phase4.md)。
 
-第五阶段验证：`python scripts/acceptance_phase5.py`，验证不同角色、项目与证据隔离、身份切换、审计和备份恢复。发布包验证：先构建前端，再运行 `python -m build --wheel` 和 `python scripts/verify_wheel.py dist/omnitest-0.4.0-py3-none-any.whl`，检查离开源码目录后的安装运行。
+第五阶段验证：`python scripts/acceptance_phase5.py`，验证不同角色、项目与证据隔离、身份切换、审计和备份恢复。发布包验证：先构建前端，再运行 `python -m build --wheel` 和 `python scripts/verify_wheel.py dist/omnitest-0.5.0-py3-none-any.whl`，检查离开源码目录后的安装运行。
 
 远程节点验证：`python scripts/acceptance_nodes.py`，真实启动两个独立 worker，验证节点分配、HTTP／Web／文件、取消、断联和平台重启，详见 [远程执行](docs/remote-execution.md)。
 
 MQTT／日历验证：`python scripts/acceptance_protocols.py`，通过真实 broker 连续两次执行 4 项套件，在界面创建 Cron 后等待真实分钟触发，并由远程 worker 执行。
+
+数据与协作收尾验证：`python scripts/acceptance_completion.py`，从真实界面创建成员／团队、导入 CSV 并配置环境，在远程 worker 执行，再验证令牌轮换、团队撤权与备份恢复。
 
 ## 配置与执行边界
 
@@ -195,9 +197,9 @@ docker compose up -d platform
 
 新增增量：只读 SQLite、TCP、protobuf gRPC、分阶段 HTTP 负载及延迟／错误率、HTTP 故障注入与恢复观察、Appium 原生应用步骤与截图。Android API 35 模拟器和 Windows 11 WinForms 应用已实际验证；iOS / macOS 连接入口待设备验证。所有新增执行器均通过插件入口注册，另附可独立安装的 JSON 文档检查包。
 
-尚未实现：图形化步骤编排器、Web 录制、Allure 集成、独立租户隔离、SSO／成员数据库、进程级 CPU／内存配额、PostgreSQL／MySQL、大规模压力执行器、流式 gRPC、系统级 chaos，以及 iOS／macOS 设备验收。项目角色是共享管理权限，不能替代操作系统或设备隔离。
+尚未实现：图形化步骤编排器、Web 录制、Allure 集成、独立租户隔离、SSO、进程级 CPU／内存配额、PostgreSQL／MySQL、大规模压力执行器、流式 gRPC、系统级 chaos，以及 iOS／macOS 设备验收。项目角色是共享管理权限，不能替代操作系统或设备隔离。
 
-第五阶段已提供项目级角色、审计、恢复、SDK、安装包及固定节点远程执行；多主协调、自动迁移重试及团队成员体系继续按实际部署需求推进。PostgreSQL／MySQL、外部数据集管理和 Apple 平台实测仍有独立后续项。
+第五阶段已提供项目级角色、审计、恢复、SDK、安装包及固定节点远程执行；多主协调与自动迁移重试继续按实际部署需求推进。成员、团队、环境覆盖和数据集已实现；Apple 平台实际验证仍需 Mac 主机。
 
 ## 工程文档
 
@@ -211,6 +213,9 @@ docker compose up -d platform
 - [第五阶段权限、运维、恢复与发布](docs/phase5.md)
 - [远程执行节点](docs/remote-execution.md)
 - [MQTT／IoT 与日历调度](docs/mqtt-scheduling.md)
+- [环境覆盖与数据集](docs/datasets-environments.md)
+- [成员与团队](docs/collaboration.md)
+- [五阶段实施与验收](docs/roadmap.md)
 - [实际验收记录](docs/verification.md)
 
 MIT License。

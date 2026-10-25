@@ -2,7 +2,7 @@
 
 首个增量已经实现数据库、TCP 协议和小规模 HTTP 性能测试；没有修改 `Runner`、Test IR、任务状态机或报告生命周期。三个适配器都通过 `omnitest.adapters` entry point 接入，与第一阶段使用相同的用例、套件、CLI、API 和结果中心。
 
-v0.4.0 新增真实 MQTT／IoT 协议执行、Cron／时区日历、重叠和补跑策略，见 [MQTT 与调度](mqtt-scheduling.md)。PostgreSQL／MySQL、更完整的环境覆盖和外部数据集导入仍为后续扩展。
+v0.4.0 新增真实 MQTT／IoT 协议执行、Cron／时区日历、重叠和补跑策略，见 [MQTT 与调度](mqtt-scheduling.md)。v0.5.0 进一步实现环境目标覆盖与外部 CSV／JSON 数据集，见 [环境与数据](datasets-environments.md)。第二阶段核心范围已完成，PostgreSQL／MySQL 为后续扩展。
 
 ## 可复现示例
 
@@ -111,4 +111,4 @@ python scripts/acceptance_phase2.py
 
 2026-10-24 本地验收结果：完整回归 **57 passed**；第二阶段套件通过 CLI 连续运行两次，每次 **9 PASSED**，再通过 Web 运行得到 **9 PASSED**；浏览器脚本错误为 0。原始摘要为 `data/phase2/summary.json`，完整回归 JUnit 为 `data/phase2/tests.xml`。这些运行数据不会包含在 Git 源码中。
 
-MQTT／IoT 与调度重叠、时区日历已在 v0.4.0 实现；后续继续扩展环境按目标覆盖和 CSV／JSON 数据集管理。没有设备或 broker 的功能不会用占位结果冒充完成。
+MQTT／IoT 与调度重叠、时区日历已在 v0.4.0 实现；环境按目标覆盖和 CSV／JSON 数据集管理已在 v0.5.0 实现。没有设备或 broker 的功能不会用占位结果冒充完成。

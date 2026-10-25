@@ -23,7 +23,7 @@ def test_upgrade_existing_database_preserves_projects_and_adds_audit(tmp_path):
     db.migrate()
     with db.session.begin() as session:
         assert session.get(Resource, "existing").body["name"] == "Preserved"
-        assert session.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0003"
+        assert session.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0004"
         session.add(
             AuditEvent(
                 actor="admin",

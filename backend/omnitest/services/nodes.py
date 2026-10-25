@@ -252,9 +252,16 @@ class NodeService:
 
     def save_result(self, node_id, run_id, result_id, value):
         with self.lock, self.db.session.begin() as session:
-            self.owned(session, node_id, run_id, value.claim_id)
+            run, _ = self.owned(session, node_id, run_id, value.claim_id)
             row = self.result(session, run_id, result_id)
             outcome = Redactor().clean(value.model_dump(exclude={"claim_id"}))
+            selection = next(
+                item.get("selection")
+                for item in run.snapshot["cases"]
+                if item["result_id"] == result_id
+            )
+            if selection:
+                outcome["detail"]["selection"] = Redactor().clean(selection)
             attempts = outcome["detail"].get("attempts", [])
             if not isinstance(attempts, list) or len(attempts) > 4:
                 raise ValueError("Invalid result attempts")

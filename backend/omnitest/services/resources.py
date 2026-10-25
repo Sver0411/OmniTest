@@ -4,8 +4,8 @@ import time
 
 from sqlalchemy import select
 
-from omnitest.core.ir import Environment, Project, Schedule, Suite, Target, TestIR
-from omnitest.db import Resource
+from omnitest.core.ir import Dataset, Environment, Project, Schedule, Suite, Target, TestIR
+from omnitest.db import Member, Resource, Team
 
 SCHEMAS = {
     "projects": Project,
@@ -14,6 +14,7 @@ SCHEMAS = {
     "suites": Suite,
     "environments": Environment,
     "schedules": Schedule,
+    "datasets": Dataset,
 }
 
 
@@ -56,10 +57,12 @@ class Resources:
             raise ValueError("Cross-project reference is not allowed")
         return row
 
-    def save(self, kind, body, project_id=None, identity=None, session=None):
+    def save(self, kind, body, project_id=None, identity=None, session=None, dataset_source=None):
         if session is None:
             with self.db.session.begin() as s:
-                return self.save(kind, body, project_id, identity, session=s)
+                return self.save(
+                    kind, body, project_id, identity, session=s, dataset_source=dataset_source
+                )
         if kind not in SCHEMAS:
             raise LookupError("Unknown resource kind")
         body = SCHEMAS[kind].model_validate(body).model_dump(mode="json")
@@ -73,6 +76,19 @@ class Resources:
             adapter = self.registry.create(body["adapter"])
             if target.body["kind"] not in adapter.info.target_kinds:
                 raise ValueError("Adapter does not support this target kind")
+            for dataset_id in body["dataset_ids"]:
+                self.same_project("datasets", dataset_id, project_id, s)
+        elif kind == "datasets":
+            previous = self.get(kind, identity, s).body if identity else {}
+            body["source"] = dataset_source or (
+                previous.get("source") if body["rows"] == previous.get("rows") else None
+            )
+        elif kind == "environments":
+            for source, replacement in body["target_overrides"].items():
+                original = self.same_project("targets", source, project_id, s)
+                actual = self.same_project("targets", replacement, project_id, s)
+                if original.body["kind"] != actual.body["kind"]:
+                    raise ValueError("Environment replacements must have the same target kind")
         elif kind == "suites":
             for case_id in body["case_ids"]:
                 self.same_project("cases", case_id, project_id, s)
@@ -122,6 +138,10 @@ class Resources:
     def delete(self, kind, identity):
         with self.db.session.begin() as s:
             row = self.get(kind, identity, s)
+            if kind == "projects":
+                for model in [Member, Team]:
+                    if any(identity in item.project_roles for item in s.scalars(select(model))):
+                        raise ValueError("Project is referenced by member or team grants")
             for other in s.scalars(select(Resource)):
                 body = other.body
                 linked = (
@@ -130,6 +150,9 @@ class Resources:
                     or identity in body.get("case_ids", [])
                     or body.get("suite_id") == identity
                     or body.get("environment_id") == identity
+                    or identity in body.get("dataset_ids", [])
+                    or identity in body.get("target_overrides", {})
+                    or identity in body.get("target_overrides", {}).values()
                 )
                 if linked:
                     raise ValueError(f"Resource is referenced by {other.kind}: {body.get('name')}")

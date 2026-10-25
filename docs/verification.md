@@ -107,3 +107,17 @@ iOS / macOS 缺少 Apple 主机与设备，只有连接协议实现，未完成�
 - 本地工作台升级前归档 13 个数据库／证据文件，备份 SHA-256 `7f92d4b86509e14bdaa3ae11b478abfd496933799e67b53aff860fc9f32d6e67`。原 12 个运行保留，新增 MQTT 冒烟 **4 PASSED**，新增日历示例默认停用。实际服务版本 0.4.0，就绪检查通过。最新表单在 1440 / 820 宽度下无横向溢出，保存按钮可见，0 页面错误。
 
 本批结果为 Windows 本地实测，新的远程 CI 未触发；流程已加入 MQTT、日历和远程 worker 验收。没有物理 IoT 设备、生产 TLS broker、Apple 设备或跨物理机器验收的声明。
+
+## 2026-10-25 五阶段本机收尾 v0.5.0
+
+- 完整后端回归 **183 passed**，JUnit 为 `data/final-tests.xml`；Ruff、前端格式、TypeScript 与生产构建通过。第三阶段单独记录 **12 passed**，包含于完整测试范围，见 `data/final-ai-tests.xml`，不与 183 重复相加。仍有一条既有 Starlette/httpx 测试集成弃用提示。
+- 第一阶段：两次 CLI 各 **22 PASSED**，Web **22 PASSED**；诊断 1 FAILED + 1 ERROR 符合预期，调度重启、文件插件、CRUD、深浅主题和 1440 / 820 宽度正常，`data/final-core/summary.json`。
+- 第二阶段数据库／TCP／基础性能：两次 CLI 及 Web 各 **9 PASSED**，`data/final-phase2/summary.json`。MQTT 两次 CLI 各 **4 PASSED**，通过界面创建的真实每分钟 Cron 由独立 worker 执行 **4 PASSED**，重启后间隔调度再次 **4 PASSED**，`data/final-protocols/summary.json`。
+- 第四阶段 gRPC／负载／故障恢复：两次 CLI 及 Web 各 **5 PASSED**，`data/final-phase4/summary.json`。Android 15 / API 35 模拟器重新执行输入、点击、断言与截图 **1 PASSED**，报告 `data/final-device-android/device-report.json`；Windows 原生 WinForms 窗口相同步骤 **1 PASSED**，报告 `data/final-device-windows-attached/device-report.json`。
+- 本次 Windows 使用管理员 appTopLevelWindow 绑定限定测试窗口。当前驱动直接启动 PowerShell fixture 返回 spawn UNKNOWN，采用已文档化窗口绑定模式完成实际交互；不将直接启动模式记为通过。设备验收完成后清理专用 Appium／模拟器与 fixture 进程。
+- 权限、审计和离线恢复：既有配置身份演练通过，HTTP / Web 各 **2 PASSED**，`data/final-access/summary.json`。两独立节点、CLI、截图、取消、失联、服务重启和凭据边界通过，`data/final-nodes/summary.json`。
+- 数据与团队全链路：浏览器创建成员及团队、导入 CSV 并指定整数列、关联用例、配置环境目标覆盖，远程执行 **2 PASSED**；A 项目可编辑、B 项目只读，项目列表与用例按钮权限正常。团队撤权和成员令牌轮换立即生效，CLI 保留原 CSV CRLF 内容哈希；恢复成员、团队、数据、环境和历史后再次远程执行 **2 PASSED**，0 页面脚本错误，`data/completion/summary.json`。
+- 独立 wheel：`data/final-dist/omnitest-0.5.0-py3-none-any.whl` 在新虚拟环境及源码目录外安装，UI、迁移、真实 HTTP、SDK／MQTT 插件、时区预览、数据集导入与成员／团队认证通过，`data/completion/wheel-summary.json`。
+- 本地工作台升级前无活动任务，已归档原历史，备份 SHA-256 `bd0e4e0a668be32c1371b8f1114620ce3abc5d8a74168f79651747a522e14d76`。保留 13 个旧运行，新增 CSV／环境演示实际 **2 PASSED**，`data/release/completion-smoke.json`。新环境表单在 1440 / 820 宽度无横向溢出、保存按钮可见，0 页面错误；原本地管理员模式保留，未自动启用共享账户或保存常设用户令牌。
+
+iOS／macOS 无 Mac 主机，按设备条件保留为未实测项。AI 验证针对可选 Provider 协议及工作流，未声明真实云模型效果评估。节点测试使用同机独立进程；当前增量未触发新的远程 CI 或跨物理机部署测试。五阶段范围和后续扩展见 [实施与验收](roadmap.md)。运行数据库、截图、设备工具、令牌和验收日志不进入 Git。

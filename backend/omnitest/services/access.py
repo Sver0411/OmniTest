@@ -26,6 +26,9 @@ class Principal:
     name: str
     role: str
     project_ids: frozenset[str] | None = None
+    project_roles: dict[str, str] | None = None
+    member_id: str | None = None
+    display_name: str | None = None
 
     @property
     def admin(self):
@@ -46,12 +49,30 @@ class Principal:
         if not isinstance(project_id, str) or not self.visible(project_id):
             raise HTTPException(403, "Project access denied")
 
-    def describe(self):
+    def role_for(self, project_id=None):
+        if self.admin or self.project_roles is None:
+            return self.role
+        return self.project_roles.get(project_id, "member")
+
+    def can(self, permission, project_id=None):
+        role = self.role_for(project_id)
+        return self.admin or role in (
+            {"editor"} if permission == "manage" else {"editor", "operator"}
+        )
+
+    def describe(self, project_id=None):
         return {
             "name": self.name,
-            "role": self.role,
+            "role": self.role_for(project_id),
+            "member_id": self.member_id,
+            "display_name": self.display_name or self.name,
+            "project_roles": self.project_roles,
             "project_ids": sorted(self.project_ids) if self.project_ids is not None else None,
-            "permissions": {"admin": self.admin, "manage": self.manage, "execute": self.execute},
+            "permissions": {
+                "admin": self.admin,
+                "manage": self.can("manage", project_id),
+                "execute": self.can("execute", project_id),
+            },
         }
 
 
@@ -59,6 +80,9 @@ class AccessControl:
     def __init__(self, settings, db):
         self.settings, self.db = settings, db
         self.credentials = []
+        from omnitest.services.members import Members
+
+        self.members = Members(db, settings)
         names, tokens = set(), set()
         if settings.api_token:
             self.credentials.append((settings.api_token, Principal("administrator", "admin")))
@@ -97,6 +121,8 @@ class AccessControl:
         for token, candidate in self.credentials:
             if hmac.compare_digest(supplied.encode(), token.encode()):
                 principal = candidate
+        if principal is None and supplied.startswith("omt_") and len(supplied) == 47:
+            principal = self.members.authenticate(supplied)
         if principal is None:
             raise HTTPException(401, "Invalid API token")
         return principal
@@ -115,6 +141,7 @@ class AccessControl:
         parts = path.strip("/").split("/")
         read = method in {"GET", "HEAD"}
         project = request.query_params.get("project_id")
+        required = None
         if project:
             principal.check_project(project)
         if read and path in {
@@ -126,19 +153,19 @@ class AccessControl:
             "/api/schedules/preview",
         }:
             return
-        if path == "/api/cases/import":
-            if not principal.manage:
-                raise HTTPException(403, "Editor role required")
-            payload = await self.payload(request)
-            project = payload.get("project_id")
+        if path in {"/api/cases/import", "/api/datasets/preview", "/api/datasets/import"}:
+            required = "manage"
+            project = (await self.payload(request)).get("project_id")
+        elif len(parts) == 4 and parts[1] == "datasets" and parts[3] == "export" and read:
+            project = self.project_for(Resource, parts[2], "datasets")
         elif len(parts) >= 3 and parts[1] == "resources":
             kind = parts[2]
             if kind not in SCHEMAS:
                 raise HTTPException(403, "Resource access denied")
-            if not read and (
-                not principal.manage or kind == "projects" and method in {"POST", "DELETE"}
-            ):
-                raise HTTPException(403, "Resource modification denied")
+            if not read:
+                if kind == "projects" and method in {"POST", "DELETE"}:
+                    raise HTTPException(403, "Administrator role required")
+                required = "manage"
             if len(parts) == 4:
                 project = self.project_for(Resource, parts[3], kind)
             elif not read:
@@ -146,8 +173,8 @@ class AccessControl:
             elif project is None:
                 return
         elif len(parts) >= 2 and parts[1] == "runs":
-            if not read and not principal.execute:
-                raise HTTPException(403, "Execution permission required")
+            if not read:
+                required = "execute"
             if len(parts) >= 3:
                 project = self.project_for(Run, parts[2])
             elif not read:
@@ -160,6 +187,8 @@ class AccessControl:
             raise HTTPException(403, "Administrator role required")
         principal.check_project(project)
         request.state.project_id = project
+        if required and not principal.can(required, project):
+            raise HTTPException(403, "Project role does not permit this action")
 
     @staticmethod
     async def payload(request):

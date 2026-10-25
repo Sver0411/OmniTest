@@ -76,5 +76,6 @@ class Redactor:
         if isinstance(value, str):
             for secret in self.secrets:
                 value = value.replace(secret, "[REDACTED]")
+            value = re.sub(r"omt_[A-Za-z0-9_-]{43}", "[REDACTED]", value)
             value = re.sub(r"(?i)(bearer\s+)[\w.\-]+", r"\1[REDACTED]", value)
         return value

@@ -35,7 +35,8 @@ while not server.started:
     if time.monotonic()>deadline: raise RuntimeError('Fixture startup failed')
     time.sleep(.02)
 try:
-    with TestClient(create_app(Settings(data_dir=Path('installed-data')))) as client:
+    with TestClient(create_app(Settings(data_dir=Path('installed-data'),api_token='wheel-bootstrap-test-credential'))) as client:
+        client.headers['Authorization']='Bearer wheel-bootstrap-test-credential'
         assert client.get('/api/ready').status_code == 200
         assert client.get('/api/health').json()['version'] == omnitest.__version__
         html=client.get('/').text
@@ -56,7 +57,16 @@ try:
         assert {'json-document','mqtt'}.issubset({row['id'] for row in client.get('/api/adapters').json()['items']})
         calendar=client.get('/api/schedules/preview',params={'cron':'0 9 * * mon-fri','timezone':'Asia/Shanghai'})
         assert calendar.status_code==200 and len(calendar.json()['occurrences'])==5,calendar.text
-    print(json.dumps({'version':omnitest.__version__,'package':str(Path(omnitest.__file__).resolve()),'ui':'PASSED','migrations':'PASSED','execution':'1 PASSED','sdk_plugin':'PASSED','mqtt_plugin':'PASSED','calendar_timezone':'PASSED'}))
+        dataset=client.post('/api/datasets/import',json={'project_id':project,'filename':'matrix.json','format':'json','content':'[{"q":"apple","expected":1}]'})
+        assert dataset.status_code==201,dataset.text
+        member=client.post('/api/collaboration/members',json={'username':'installed-user'})
+        assert member.status_code==201,member.text
+        member=member.json()
+        team=client.post('/api/collaboration/teams',json={'name':'Installed team','member_ids':[member['member']['id']],'project_roles':{project:'operator'}})
+        assert team.status_code==201,team.text
+        session=client.get('/api/session',params={'project_id':project},headers={'Authorization':'Bearer '+member['token']})
+        assert session.status_code==200 and session.json()['role']=='operator',session.text
+    print(json.dumps({'version':omnitest.__version__,'package':str(Path(omnitest.__file__).resolve()),'ui':'PASSED','migrations':'PASSED','execution':'1 PASSED','sdk_plugin':'PASSED','mqtt_plugin':'PASSED','calendar_timezone':'PASSED','dataset_import':'PASSED','member_team_auth':'PASSED'}))
 finally:
     server.should_exit=True;thread.join(10);sock.close()
 """

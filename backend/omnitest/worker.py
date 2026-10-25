@@ -14,7 +14,7 @@ import httpx
 
 from omnitest import __version__
 from omnitest.adapters.base import Registry
-from omnitest.core.runner import Runner
+from omnitest.core.runner import Runner, annotate_result
 from omnitest.core.security import Redactor, contained
 from omnitest.services.lock import WorkerLock
 from omnitest.services.nodes import MAX_EVIDENCE_FILE, Inventory, evidence_path
@@ -123,13 +123,15 @@ class Worker:
         async def one(item):
             try:
                 async with semaphore:
-                    return await self.runner.execute(
+                    outcome = await self.runner.execute(
                         item["case"],
                         item["target"],
                         item["variables"],
                         contained(root, item["result_id"]),
                         allowed_secrets=allowed,
                     )
+                    annotate_result(outcome, item.get("selection"))
+                    return outcome
             except asyncio.CancelledError:
                 return {
                     "status": "CANCELLED",

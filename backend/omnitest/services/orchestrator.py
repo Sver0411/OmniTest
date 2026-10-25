@@ -58,23 +58,56 @@ class Orchestrator:
             suite = self.resources.same_project("suites", request.suite_id, request.project_id, s)
             ids, concurrency = suite.body["case_ids"], suite.body["concurrency"]
             parameters = {**suite.body["parameters"], **parameters}
-        environment = {}
+        environment, overrides, selected_environment = {}, {}, None
         if request.environment_id:
-            environment = self.resources.same_project(
+            environment_body = self.resources.same_project(
                 "environments", request.environment_id, request.project_id, s
-            ).body["variables"]
+            ).body
+            environment = environment_body["variables"]
+            overrides = environment_body.get("target_overrides", {})
+            selected_environment = {"id": request.environment_id, "name": environment_body["name"]}
         cases = []
         for identity in ids:
             case = self.resources.same_project("cases", identity, request.project_id, s)
-            target = self.resources.same_project(
+            base_target = self.resources.same_project(
                 "targets", case.body["target"], request.project_id, s
             )
-            for dataset in case.body["datasets"] or [{}]:
+            target = self.resources.same_project(
+                "targets", overrides.get(base_target.id, base_target.id), request.project_id, s
+            )
+            if target.body["kind"] != base_target.body["kind"]:
+                raise ValueError("Environment target kind changed after configuration")
+            data_rows = [
+                (row, {"kind": "inline", "row": index + 1})
+                for index, row in enumerate(case.body["datasets"])
+            ]
+            for dataset_id in case.body.get("dataset_ids", []):
+                dataset = self.resources.same_project("datasets", dataset_id, request.project_id, s)
+                data_rows.extend(
+                    (
+                        row,
+                        {
+                            "kind": "dataset",
+                            "id": dataset.id,
+                            "name": dataset.body["name"],
+                            "row": index + 1,
+                            "source": dataset.body.get("source"),
+                        },
+                    )
+                    for index, row in enumerate(dataset.body["rows"])
+                )
+            for dataset, selection in data_rows or [({}, None)]:
                 cases.append(
                     {
                         "result_id": uid(),
                         "case": case.body,
                         "target": target.body,
+                        "selection": {
+                            "environment": selected_environment,
+                            "logical_target": base_target.id,
+                            "target": target.id,
+                            "dataset": selection,
+                        },
                         "variables": {
                             **environment,
                             **case.body["environment"],
@@ -98,6 +131,7 @@ class Orchestrator:
                 "source": source,
                 "actor": actor,
                 "node_id": request.node_id,
+                "environment": selected_environment,
             },
             summary={},
         )
@@ -252,6 +286,9 @@ class Orchestrator:
                         if self.settings.access_tokens
                         else None,
                     )
+                    from omnitest.core.runner import annotate_result
+
+                    annotate_result(outcome, item.get("selection"))
             except asyncio.CancelledError:
                 outcome = {
                     "status": "CANCELLED",
@@ -340,6 +377,7 @@ class Orchestrator:
                 **run_dict(run),
                 "source": run.snapshot["source"],
                 "submitted_by": run.snapshot.get("actor"),
+                "environment": run.snapshot.get("environment"),
                 "cancel_requested": bool(
                     (lease := s.get(NodeLease, run_id)) and lease.cancel_requested
                 ),
